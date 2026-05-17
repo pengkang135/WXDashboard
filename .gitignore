@@ -9,3 +9,6 @@ data/*.db
 .DS_Store
 Thumbs.db
 .originfiles/
+.claude/
+.playwright-mcp/
+backend/__pycache__/

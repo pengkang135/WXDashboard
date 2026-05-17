@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import shutil
 from datetime import datetime
@@ -9,6 +10,13 @@ from .database import (
 
 
 WX_CLI = shutil.which("wx") or "wx"
+
+_wx_js = None
+if WX_CLI != "wx" and WX_CLI.lower().endswith(".cmd"):
+    _wx_dir = os.path.dirname(WX_CLI)
+    _candidate = os.path.join(_wx_dir, "node_modules", "@jackwener", "wx-cli", "bin", "wx.js")
+    if os.path.isfile(_candidate):
+        _wx_js = _candidate
 
 CATEGORY_RULES = [
     (["ground improvement", "地基处理", "地基", "gi "], "地基处理"),
@@ -65,18 +73,18 @@ def _infer_subcategory(name, category=None):
 
 def _run_wx(args, timeout=120):
     import tempfile, os as _os
-    if WX_CLI == "wx" and not shutil.which("wx"):
-        raise RuntimeError("wx-cli 未安装")
+    if _wx_js:
+        cmd_list = ["node", _wx_js] + args
+    else:
+        if WX_CLI == "wx" and not shutil.which("wx"):
+            raise RuntimeError("wx-cli 未安装")
+        cmd_list = [WX_CLI] + args
 
-    def _quote(a):
-        return f'"{a}"' if any(c in a for c in ' &|<>^') else a
-
-    cmd_str = " ".join(_quote(a) for a in [WX_CLI] + args)
     tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, encoding="utf-8")
     tmp.close()
     try:
         result = subprocess.run(
-            cmd_str,
+            cmd_list,
             stdout=open(tmp.name, "w", encoding="utf-8"),
             stderr=subprocess.PIPE, text=False, timeout=timeout
         )
@@ -94,7 +102,11 @@ def _run_wx(args, timeout=120):
         except OSError:
             pass
     if result.returncode != 0:
-        stderr = (result.stderr or b"").decode("utf-8", errors="replace").strip()
+        stderr_bytes = result.stderr or b""
+        try:
+            stderr = stderr_bytes.decode("gbk").strip()
+        except (UnicodeDecodeError, LookupError):
+            stderr = stderr_bytes.decode("utf-8", errors="replace").strip()
         if "not found" in stderr.lower() or "not recognized" in stderr.lower():
             raise RuntimeError("wx-cli 未安装")
         if "init" in stderr.lower():
