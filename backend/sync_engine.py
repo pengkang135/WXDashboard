@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 import subprocess
 import shutil
 from datetime import datetime
@@ -112,10 +113,12 @@ def _run_wx(args, timeout=120):
     tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, encoding="utf-8")
     tmp.close()
     try:
+        creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
         result = subprocess.run(
             cmd_list,
             stdout=open(tmp.name, "w", encoding="utf-8"),
-            stderr=subprocess.PIPE, text=False, timeout=timeout
+            stderr=subprocess.PIPE, text=False, timeout=timeout,
+            creationflags=creationflags
         )
         with open(tmp.name, "r", encoding="utf-8") as f:
             stdout = f.read()

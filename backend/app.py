@@ -21,13 +21,18 @@ _auto_sync_thread = None
 _auto_sync_interval = 60
 _auto_sync_running = False
 _auto_sync_last_result = None
+_last_heartbeat = 0
 
 
 def _auto_sync_loop():
-    global _auto_sync_running, _auto_sync_last_result
+    global _auto_sync_running, _auto_sync_last_result, _last_heartbeat
     while _auto_sync_running:
         time.sleep(_auto_sync_interval)
         if not _auto_sync_running:
+            break
+        # 心跳超时(90秒)则自动停止
+        if _last_heartbeat and time.time() - _last_heartbeat > 90:
+            _auto_sync_running = False
             break
         try:
             _auto_sync_last_result = sync_incremental()
@@ -217,6 +222,13 @@ def api_sync_discover():
         return jsonify({"new_groups": new_groups, "count": len(new_groups)})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/heartbeat", methods=["POST"])
+def api_heartbeat():
+    global _last_heartbeat
+    _last_heartbeat = time.time()
+    return jsonify({"ok": True})
 
 
 @app.route("/api/sync/auto/status")

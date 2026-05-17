@@ -30,8 +30,15 @@ document.addEventListener('DOMContentLoaded', function () {
     switchDrawerTab(tab.dataset.tab);
   });
 
-  setInterval(doAutoSync, 60000);
+  // 启动后端自动同步，由前端心跳保活
+  fetch('/api/sync/auto/start', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({interval: 60}) });
+  // 每30秒心跳，维持自动同步
+  setInterval(function() { fetch('/api/heartbeat', { method: 'POST' }); }, 30000);
   initColumnResize();
+  // 页面关闭时停止自动同步
+  window.addEventListener('beforeunload', function() {
+    navigator.sendBeacon('/api/sync/auto/stop');
+  });
 });
 
 function loadProjects() {
