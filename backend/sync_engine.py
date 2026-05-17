@@ -148,65 +148,94 @@ def discover_new_groups(project="Laldia"):
 
 
 def sync_incremental():
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    output = _run_wx(["new-messages", "--json"])
-    messages = json.loads(output) if output else []
-
-    group_names = set(get_all_group_names())
     stats = {"groups_updated": 0, "messages_new": 0, "errors": [],
              "new_groups_discovered": [], "contacts_extracted": 0}
 
-    conn = get_db()
-    for msg in messages:
-        chat_type = msg.get("chat_type", "")
-        if chat_type not in ("group",):
-            continue
+    # Step 1: discover new groups
+    try:
+        for name, cat, sub in discover_new_groups():
+            stats["new_groups_discovered"].append({"name": name, "category": cat})
+    except Exception as e:
+        stats["errors"].append(f"discover_new_groups: {str(e)}")
 
-        group_name = msg.get("chat_name", "") or msg.get("name", "")
-        if not group_name:
-            continue
+    # Step 2: find active Laldia groups from sessions JSON
+    project_keywords = ["laldia", "港湾"]
+    active_groups = set()
 
-        if group_name not in group_names:
-            if "laldia" in group_name.lower() or "港湾" in group_name:
-                cat = _infer_category(group_name)
-                sub = _infer_subcategory(group_name, cat)
-                gid = upsert_group(group_name, cat, sub_category=sub, project="Laldia")
-                group_names.add(group_name)
-                stats["new_groups_discovered"].append({"name": group_name, "category": cat})
-            else:
-                stats["errors"].append(f"未知群组: {group_name}")
+    try:
+        sessions_json = _run_wx(["sessions", "-n", "200", "--json"])
+        sessions = json.loads(sessions_json) if sessions_json else []
+        for s in sessions:
+            if s.get("chat_type") != "group":
                 continue
+            name = s.get("chat", "")
+            if any(kw in name.lower() for kw in project_keywords):
+                active_groups.add(name)
+    except Exception as e:
+        stats["errors"].append(f"sessions: {str(e)}")
 
-        group = conn.execute("SELECT id FROM groups WHERE name=?", (group_name,)).fetchone()
-        if not group:
-            stats["errors"].append(f"群组不在数据库: {group_name}")
-            continue
-        group_id = group["id"]
+    # Step 3: merge with known groups that have no messages yet (never synced)
+    conn0 = get_db()
+    unsynced = set()
+    for row in conn0.execute(
+        "SELECT g.name FROM groups g LEFT JOIN messages m ON m.group_id=g.id "
+        "WHERE m.id IS NULL AND g.deleted=0"
+    ).fetchall():
+        unsynced.add(row["name"])
+    conn0.close()
 
-        inserted = _upsert_from_wx_msg(conn, group_id, msg)
-        if inserted:
-            stats["messages_new"] += 1
+    all_groups = active_groups | unsynced
 
-    conn.close()
+    # Step 4: for each group, pull messages since last known date
+    for gname in all_groups:
+        try:
+            conn = get_db()
+            group = conn.execute("SELECT id FROM groups WHERE name=?", (gname,)).fetchone()
+            if not group:
+                conn.close()
+                continue
+            gid = group["id"]
 
-    conn2 = get_db()
-    for gname in group_names:
-        group = conn2.execute("SELECT id FROM groups WHERE name=?", (gname,)).fetchone()
-        if not group:
-            continue
-        gid = group["id"]
-        count = conn2.execute("SELECT COUNT(*) as cnt FROM messages WHERE group_id=?", (gid,)).fetchone()["cnt"]
-        last = conn2.execute(
-            "SELECT msg_date FROM messages WHERE group_id=? ORDER BY msg_time DESC LIMIT 1",
-            (gid,)
-        ).fetchone()
-        update_group_stats(gid, last_active_date=last["msg_date"] if last else None, total_messages=count, conn=conn2)
-    conn2.close()
+            last = conn.execute(
+                "SELECT msg_date FROM messages WHERE group_id=? ORDER BY msg_time DESC LIMIT 1",
+                (gid,)
+            ).fetchone()
+            conn.close()
 
-    add_sync_log("全部群组(增量)", None, len(messages), stats["messages_new"],
+            since_date = last["msg_date"] if last else "2025-01-01"
+
+            output = _run_wx(
+                ["history", gname, "--json", "--since", since_date, "-n", "500"],
+                timeout=300
+            )
+            messages = json.loads(output) if output else []
+
+            conn2 = get_db()
+            new_in_group = 0
+            for msg in messages:
+                if _upsert_from_wx_msg(conn2, gid, msg):
+                    new_in_group += 1
+
+            count = conn2.execute(
+                "SELECT COUNT(*) as cnt FROM messages WHERE group_id=?", (gid,)
+            ).fetchone()["cnt"]
+            last_date = conn2.execute(
+                "SELECT msg_date FROM messages WHERE group_id=? ORDER BY msg_time DESC LIMIT 1",
+                (gid,)
+            ).fetchone()
+            update_group_stats(gid, last_active_date=last_date["msg_date"] if last_date else None,
+                              total_messages=count, conn=conn2)
+            conn2.close()
+
+            stats["messages_new"] += new_in_group
+            if new_in_group > 0:
+                stats["groups_updated"] += 1
+        except Exception as e:
+            stats["errors"].append(f"{gname}: {str(e)}")
+
+    add_sync_log("全部群组(增量)", None, 0, stats["messages_new"],
                   "ok" if not stats["errors"] else f"部分错误: {len(stats['errors'])}个群")
 
-    stats["groups_updated"] = len(group_names)
     return stats
 
 
