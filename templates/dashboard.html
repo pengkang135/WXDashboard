@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Laldia 港湾微信群台账</title>
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<header class="app-header">
+  <div class="header-top">
+    <div class="project-selector">
+      <select id="project-select" class="project-select">
+        <option value="Laldia">Laldia</option>
+      </select>
+      <h1 class="app-title"><span>港湾</span></h1>
+    </div>
+    <span class="app-subtitle">微信群台账</span>
+  </div>
+  <div class="header-controls">
+    <span class="meta-info" id="meta-info">加载中...</span>
+    <div class="header-actions">
+      <div class="search-wrap">
+        <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="search-input" class="search-input" placeholder="搜索消息内容...">
+      </div>
+      <div class="auto-sync-controls">
+        <button id="auto-sync-btn" class="btn-auto-sync" title="自动刷新开关">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <span id="auto-sync-label">自动刷新</span>
+        </button>
+        <select id="auto-sync-interval" class="interval-select" title="刷新间隔">
+          <option value="30">30秒</option>
+          <option value="60" selected>1分钟</option>
+          <option value="120">2分钟</option>
+          <option value="300">5分钟</option>
+        </select>
+        <span id="auto-sync-indicator" class="auto-sync-indicator" style="display:none"></span>
+      </div>
+      <button id="refresh-btn" class="btn-refresh">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+        刷新消息
+      </button>
+    </div>
+  </div>
+</header>
+
+<nav class="category-bar" id="category-tabs"></nav>
+
+<main class="main-content">
+  <div class="table-container" id="table-container">
+    <table id="groups-table">
+      <colgroup>
+        <col class="col-idx">
+        <col class="col-name">
+        <col class="col-cat">
+        <col class="col-date">
+        <col class="col-count">
+        <col class="col-creator">
+        <col class="col-msgs">
+        <col class="col-contacts">
+      </colgroup>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>群名</th>
+          <th>分类</th>
+          <th>最后活跃</th>
+          <th>消息数</th>
+          <th>群主</th>
+          <th>最近 3 条消息</th>
+          <th>联系信息</th>
+        </tr>
+      </thead>
+      <tbody id="groups-tbody"></tbody>
+    </table>
+  </div>
+</main>
+
+<div class="drawer-overlay" id="drawer-overlay"></div>
+<aside class="drawer" id="drawer">
+  <div class="drawer-header">
+    <h2 id="drawer-title"></h2>
+    <button class="drawer-close" id="drawer-close">&times;</button>
+  </div>
+  <div class="drawer-body" id="drawer-body"></div>
+</aside>
+
+<div class="modal-overlay" id="sync-modal-overlay"></div>
+<div class="modal" id="sync-modal">
+  <h3>同步消息中</h3>
+  <div class="progress-bar"><div class="progress-fill" id="sync-progress"></div></div>
+  <p id="sync-status-text">正在调用 wx-cli 拉取最新消息...</p>
+  <button class="btn-modal-close" id="sync-modal-close" style="display:none">关闭</button>
+</div>
+
+<div class="search-panel" id="search-panel" style="display:none">
+  <div class="search-panel-header">
+    <span id="search-panel-title"></span>
+    <button class="search-panel-close" id="search-panel-close">&times;</button>
+  </div>
+  <div class="search-panel-body" id="search-panel-body"></div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
