@@ -52,6 +52,73 @@ start_ledger.bat
 
 浏览器打开 `http://127.0.0.1:8888`
 
+![全部页功能展示](static/intro/全部页.png)
+
+
+# 使用AI
+
+## 配置Claude Code AI 助手
+
+本项目通过 Claude Code（CLI 对话式 AI）在本地完成消息摘要、群组分类和信息提取。所有 AI 处理均在 Claude Code 会话中完成，不接入外部 API。
+
+### 前置准备
+
+```bash
+# 安装 Claude Code 与微信消息摘要技能
+npm install -g @anthropic-ai/claude-code
+claude mcp add librarian           # 会话记忆归档（可选）
+```
+
+在项目根目录启动 Claude Code：
+
+```bash
+cd WXDashboard
+claude
+```
+
+### 常用 AI 指令
+
+以下为 Claude Code 会话中可下达的自然语言指令示例：
+
+**群组智能分类**
+
+```
+帮我检查一下当前有哪些未分类的群组，根据当前项目的特点自动分类。
+分类体系: 内部（总承包）包含内部沟通、施工局合作、设计院合作；
+          外部（各分包）包含供应商询价、地基处理、建筑MEP、保险、物流。
+不确定的标记为"待确认"，不要强行分类。
+```
+
+AI 会读取数据库中的群名和最近消息内容，结合项目合作方构成推断分类，通过 `/api/groups/<id>/subcategory` 写入。
+
+**群聊摘要生成**
+
+```
+为所有消息数超过 50 条的群生成最近一周的聊天摘要。
+```
+
+AI 会调用 `baoyu-wechat-summary` 技能逐群生成结构化摘要（摘要内容、关键主题），写入 `ai_summaries` 表并生成 Markdown 备份。
+
+**关键信息提取**
+
+```
+提取所有群最近一周消息中的关键信息，包括:
+- 联系人信息（公司名、职位、联系方式）
+- 技术参数（规格、标准、指标值）
+- 工期节点（计划日期、里程碑）
+- 文件/图纸引用（编号、版本、发布日期）
+```
+
+提取结果写入 `ai_extractions` 表，前端群详情页"关键信息"标签页可查看。
+
+**自定义指令**
+
+```
+帮我总结一下"施工技术讨论"群最近三天关于混凝土施工方案的讨论要点。
+```
+
+你可以随意组合群名、时间范围和信息维度的限定，Claude Code 会从 `messages` 表读取相应消息并进行分析。
+
 ## 架构
 
 ```
@@ -100,14 +167,14 @@ JSON 响应 → 浏览器渲染
 
 ### 核心模块
 
-| 文件 | 职责 |
-|------|------|
-| `backend/sync_engine.py` | 调用 wx-cli，解析 JSON，类别推断，消息入库 |
-| `backend/database.py` | SQLite schema，FTS5 全文搜索，CRUD 操作 |
-| `backend/contact_extractor.py` | 正则提取邮箱和手机号 |
-| `backend/app.py` | 13 个 REST 端点，Flask 开发服务器 |
-| `backend/config.py` | 路径和端口配置 |
-| `backend/import_legacy.py` | 旧版 Excel/JSON 台账导入 |
+| 文件                             | 职责                                       |
+| -------------------------------- | ------------------------------------------ |
+| `backend/sync_engine.py`       | 调用 wx-cli，解析 JSON，类别推断，消息入库 |
+| `backend/database.py`          | SQLite schema，FTS5 全文搜索，CRUD 操作    |
+| `backend/contact_extractor.py` | 正则提取邮箱和手机号                       |
+| `backend/app.py`               | 13 个 REST 端点，Flask 开发服务器          |
+| `backend/config.py`            | 路径和端口配置                             |
+| `backend/import_legacy.py`     | 旧版 Excel/JSON 台账导入                   |
 
 ### 数据库表
 
@@ -196,68 +263,6 @@ WXDashboard/
 │   └── (SQLite 数据库，由 init_db() 自动创建)
 └── .originfiles/         # 临时文件和 AI 产出备份
 ```
-
-## Claude Code AI 助手
-
-本项目通过 Claude Code（CLI 对话式 AI）在本地完成消息摘要、群组分类和信息提取。所有 AI 处理均在 Claude Code 会话中完成，不接入外部 API。
-
-### 前置准备
-
-```bash
-# 安装 Claude Code 与微信消息摘要技能
-npm install -g @anthropic-ai/claude-code
-claude mcp add librarian           # 会话记忆归档（可选）
-```
-
-在项目根目录启动 Claude Code：
-
-```bash
-cd WXDashboard
-claude
-```
-
-### 常用 AI 指令
-
-以下为 Claude Code 会话中可下达的自然语言指令示例：
-
-**群组智能分类**
-
-```
-帮我检查一下当前有哪些未分类的群组，根据当前项目的特点自动分类。
-分类体系: 内部（总承包）包含内部沟通、施工局合作、设计院合作；
-          外部（各分包）包含供应商询价、地基处理、建筑MEP、保险、物流。
-不确定的标记为"待确认"，不要强行分类。
-```
-
-AI 会读取数据库中的群名和最近消息内容，结合项目合作方构成推断分类，通过 `/api/groups/<id>/subcategory` 写入。
-
-**群聊摘要生成**
-
-```
-为所有消息数超过 50 条的群生成最近一周的聊天摘要。
-```
-
-AI 会调用 `baoyu-wechat-summary` 技能逐群生成结构化摘要（摘要内容、关键主题），写入 `ai_summaries` 表并生成 Markdown 备份。
-
-**关键信息提取**
-
-```
-提取所有群最近一周消息中的关键信息，包括:
-- 联系人信息（公司名、职位、联系方式）
-- 技术参数（规格、标准、指标值）
-- 工期节点（计划日期、里程碑）
-- 文件/图纸引用（编号、版本、发布日期）
-```
-
-提取结果写入 `ai_extractions` 表，前端群详情页"关键信息"标签页可查看。
-
-**自定义指令**
-
-```
-帮我总结一下"施工技术讨论"群最近三天关于混凝土施工方案的讨论要点。
-```
-
-你可以随意组合群名、时间范围和信息维度的限定，Claude Code 会从 `messages` 表读取相应消息并进行分析。
 
 ### 手动分类与 AI 跳过
 
