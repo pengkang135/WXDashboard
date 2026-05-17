@@ -54,7 +54,6 @@ start_ledger.bat
 
 ![全部页功能展示](static/intro/全部页.png)
 
-
 # 使用AI
 
 ## 配置Claude Code AI 助手
