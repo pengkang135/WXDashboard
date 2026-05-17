@@ -18,6 +18,11 @@ if WX_CLI != "wx" and WX_CLI.lower().endswith(".cmd"):
     if os.path.isfile(_candidate):
         _wx_js = _candidate
 
+PROJECT_RULES = [
+    (["laldia", "港湾"], "Laldia"),
+    (["泰国"], "泰国光伏"),
+]
+
 CATEGORY_RULES = [
     (["ground improvement", "地基处理", "地基", "gi "], "地基处理"),
     (["mep"], "建筑MEP"),
@@ -28,6 +33,8 @@ CATEGORY_RULES = [
     (["四航院", "水规院", "水运院"], "设计院合作"),
     (["一航局", "二航局", "三航局", "四航局"], "施工局合作"),
 ]
+
+SKIP_KEYWORDS = ["通威", "364mw"]
 
 SUBCATEGORY_RULES = [
     (["护舷", "天盾", "泰鸿", "特瑞堡", "fender", "橡胶"], "护舷"),
@@ -53,6 +60,28 @@ SUBCATEGORY_RULES = [
     (["设计", "四航院", "水规院", "水运院", "consult"], "设计咨询"),
     (["四航局", "一航局", "二航局", "三航局", "施工", "contractor"], "施工"),
 ]
+
+
+def _infer_project(name):
+    lower = name.lower()
+    for keywords, proj in PROJECT_RULES:
+        if any(kw in lower for kw in keywords):
+            if any(sk in lower for sk in SKIP_KEYWORDS):
+                return None
+            return proj
+    return None
+
+
+def _fetch_group_owner(group_name):
+    try:
+        output = _run_wx(["members", group_name, "--json"], timeout=30)
+        members = json.loads(output) if output else []
+        for m in members:
+            if m.get("is_owner"):
+                return m.get("display", "")
+    except Exception:
+        pass
+    return ""
 
 
 def _infer_category(name):
@@ -115,35 +144,32 @@ def _run_wx(args, timeout=120):
     return (stdout or "").strip()
 
 
-def discover_new_groups(project="Laldia"):
-    output = _run_wx(["sessions", "-n", "200"])
+def discover_new_groups(project=None):
+    output = _run_wx(["sessions", "-n", "200", "--json"])
+    sessions = json.loads(output) if output else []
     group_names = set(get_all_group_names())
     new_groups = []
-    conn = get_db()
 
-    project_keywords = ["laldia", "港湾"]
-    if project != "Laldia":
-        project_keywords = [project.lower()]
+    for s in sessions:
+        if s.get("chat_type") != "group":
+            continue
+        name = s.get("chat", "")
+        if not name or name in group_names:
+            continue
 
-    for line in output.split("\n"):
-        line = line.strip()
-        if not line.startswith("- chat:"):
+        proj = _infer_project(name)
+        if not proj:
             continue
-        name = line[7:].strip()
-        if name in group_names:
-            continue
-        if not any(kw in name.lower() for kw in project_keywords):
-            continue
-        if any(skip in name.lower() for skip in ["通威", "364mw"]):
+        if project and proj != project:
             continue
 
         category = _infer_category(name)
         sub_category = _infer_subcategory(name, category)
-        upsert_group(name, category, sub_category=sub_category, project=project)
+        owner = _fetch_group_owner(name)
+        upsert_group(name, category, sub_category=sub_category, project=proj, group_creator=owner)
         group_names.add(name)
-        new_groups.append((name, category, sub_category))
+        new_groups.append((name, category, sub_category, proj))
 
-    conn.close()
     return new_groups
 
 
@@ -151,15 +177,18 @@ def sync_incremental():
     stats = {"groups_updated": 0, "messages_new": 0, "errors": [],
              "new_groups_discovered": [], "contacts_extracted": 0}
 
-    # Step 1: discover new groups
+    # Step 1: discover new groups (all projects)
     try:
-        for name, cat, sub in discover_new_groups():
-            stats["new_groups_discovered"].append({"name": name, "category": cat})
+        for name, cat, sub, proj in discover_new_groups():
+            stats["new_groups_discovered"].append({"name": name, "category": cat, "project": proj})
     except Exception as e:
         stats["errors"].append(f"discover_new_groups: {str(e)}")
 
-    # Step 2: find active Laldia groups from sessions JSON
-    project_keywords = ["laldia", "港湾"]
+    # Step 2: find active groups from sessions JSON (all projects)
+    project_keywords = []
+    for keywords, _proj in PROJECT_RULES:
+        for kw in keywords:
+            project_keywords.append(kw)
     active_groups = set()
 
     try:
@@ -170,7 +199,8 @@ def sync_incremental():
                 continue
             name = s.get("chat", "")
             if any(kw in name.lower() for kw in project_keywords):
-                active_groups.add(name)
+                if not any(sk in name.lower() for sk in SKIP_KEYWORDS):
+                    active_groups.add(name)
     except Exception as e:
         stats["errors"].append(f"sessions: {str(e)}")
 

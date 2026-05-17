@@ -1,7 +1,7 @@
 import threading
 import time
 from flask import Flask, render_template, request, jsonify
-from .config import TEMPLATES_DIR, STATIC_DIR, FLASK_HOST, FLASK_PORT
+from .config import TEMPLATES_DIR, STATIC_DIR, FLASK_HOST, FLASK_PORT, get_wx_file_url
 from .database import (
     init_db, get_all_groups, get_group, get_categories,
     get_messages, get_latest_messages, search_messages,
@@ -125,6 +125,16 @@ def api_projects():
 def api_group_contacts(group_id):
     contacts = get_contacts(group_id=group_id)
     return jsonify(contacts)
+
+
+@app.route("/api/files/check")
+def api_check_file():
+    msg_date = request.args.get("msg_date", "")
+    filename = request.args.get("filename", "")
+    url = get_wx_file_url(msg_date, filename)
+    if url:
+        return jsonify({"exists": True, "url": url})
+    return jsonify({"exists": False})
 
 
 @app.route("/api/groups/<int:group_id>/subcategory", methods=["POST"])

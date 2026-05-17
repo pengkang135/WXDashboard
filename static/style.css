@@ -627,6 +627,23 @@ tr:hover .group-name { color: var(--accent); }
   line-height: 1.5;
 }
 
+/* === File Links === */
+.file-link {
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: color 0.12s;
+  display: inline-block;
+  padding: 2px 0;
+}
+.file-link:hover { color: var(--ink); }
+
+.file-indicator {
+  color: var(--accent);
+  font-size: 0.78rem;
+}
+
 /* === Responsive === */
 @media (max-width: 900px) {
   .app-header { padding: 12px 16px; }

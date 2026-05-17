@@ -279,7 +279,15 @@ function renderMessagesCell(groupId, msgs) {
     senderSpan.textContent = m.sender + ': ';
     li.appendChild(senderSpan);
 
-    li.appendChild(document.createTextNode(truncate(m.content, 60)));
+    var fileInfo = parseFileInfo(m);
+    if (fileInfo) {
+      var fileSpan = document.createElement('span');
+      fileSpan.className = 'file-indicator';
+      fileSpan.textContent = '[文件] ' + truncate(fileInfo.filename, 40);
+      li.appendChild(fileSpan);
+    } else {
+      li.appendChild(document.createTextNode(truncate(m.content, 60)));
+    }
     ul.appendChild(li);
   });
   cell.appendChild(ul);
@@ -366,7 +374,18 @@ function loadDrawerMessages(groupId, offset) {
 
         var content = document.createElement('div');
         content.className = 'content';
-        content.textContent = m.content;
+        var fileInfo = parseFileInfo(m);
+        if (fileInfo) {
+          var fileLink = document.createElement('span');
+          fileLink.className = 'file-link';
+          fileLink.textContent = '[文件] ' + fileInfo.filename;
+          fileLink.addEventListener('click', function () {
+            onFileClick(fileInfo.filename, fileInfo.msg_date);
+          });
+          content.appendChild(fileLink);
+        } else {
+          content.textContent = m.content;
+        }
         item.appendChild(content);
 
         body.appendChild(item);
@@ -524,7 +543,19 @@ function onSearch() {
 
         var contentEl = document.createElement('div');
         contentEl.className = 'result-content';
-        contentEl.textContent = truncate(m.content, 140);
+        var fileInfo = parseFileInfo(m);
+        if (fileInfo) {
+          var fileLink = document.createElement('span');
+          fileLink.className = 'file-link';
+          fileLink.textContent = '[文件] ' + fileInfo.filename;
+          fileLink.addEventListener('click', function (e) {
+            e.stopPropagation();
+            onFileClick(fileInfo.filename, fileInfo.msg_date);
+          });
+          contentEl.appendChild(fileLink);
+        } else {
+          contentEl.textContent = truncate(m.content, 140);
+        }
         item.appendChild(contentEl);
 
         item.addEventListener('click', function () {
@@ -675,4 +706,29 @@ function truncate(s, maxLen) {
   if (!s) return '';
   if (s.length <= maxLen) return s;
   return s.substring(0, maxLen) + '...';
+}
+
+function parseFileInfo(msg) {
+  if (msg.msg_type && (msg.msg_type.indexOf('文件') !== -1 || msg.msg_type.indexOf('链接') !== -1)) {
+    var match = msg.content.match(/^\[文件\]\s*(.+)/);
+    if (match) {
+      return { filename: match[1], msg_date: msg.msg_date };
+    }
+  }
+  return null;
+}
+
+function onFileClick(filename, msgDate) {
+  fetch('/api/files/check?msg_date=' + encodeURIComponent(msgDate) + '&filename=' + encodeURIComponent(filename))
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      if (data.exists && data.url) {
+        window.open(data.url, '_blank');
+      } else {
+        alert('文件不存在: ' + filename);
+      }
+    })
+    .catch(function () {
+      alert('检查文件失败: ' + filename);
+    });
 }

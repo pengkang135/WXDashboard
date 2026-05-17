@@ -119,7 +119,7 @@ def get_all_groups(category=None, project=None):
     if project:
         clauses.append("project=?")
         params.append(project)
-    sql = f"SELECT * FROM groups WHERE {' AND '.join(clauses)} ORDER BY id"
+    sql = f"SELECT * FROM groups WHERE {' AND '.join(clauses)} ORDER BY last_active_date DESC, id DESC"
     rows = conn.execute(sql, params).fetchall()
     conn.close()
     return [dict(r) for r in rows]
