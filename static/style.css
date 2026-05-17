@@ -155,7 +155,7 @@ body {
 .search-input::placeholder { color: var(--fog); }
 
 /* Buttons */
-.btn-refresh {
+.btn-refresh, .btn-export {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -171,8 +171,10 @@ body {
   white-space: nowrap;
   transition: background 0.15s, opacity 0.15s;
 }
-.btn-refresh:hover { background: var(--slate); }
-.btn-refresh:active { opacity: 0.85; }
+.btn-refresh:hover, .btn-export:hover { background: var(--slate); }
+.btn-refresh:active, .btn-export:active { opacity: 0.85; }
+.btn-export { background: var(--green); border-color: var(--green); }
+.btn-export:hover { background: #3d6a4a; }
 
 .btn-modal-close {
   font-family: var(--font-ui);

@@ -127,6 +127,52 @@ WXDashboard/
 - 设计文档: `docs/`
 - 临时文件: `.originfiles/` (已加入 .gitignore)
 
+## AI 辅助操作
+
+Claude Code 对本项目的 AI 介入定位:**信息筛选与整理**，让微信群工作信息更清晰展示。不涉及比价、问答、语义搜索、风险预警。所有 AI 处理均在 Claude Code 会话中完成，不接入外部 API。
+
+### 群组智能分类
+
+当有未分类或分类存疑的群时:
+
+1. 查询 `SELECT name FROM groups WHERE category IS NULL OR category = ''`
+2. 取群名 + 该群最近 5 条消息 (`SELECT content, sender FROM messages WHERE group_id=? ORDER BY timestamp DESC LIMIT 5`)
+3. 参照现有分类体系（内部沟通、设计院合作、施工局合作、地基处理、建筑MEP、供应商询价、保险、物流）判断类别
+4. 通过 `/api/groups/<id>/subcategory` 写入 `category` 和 `sub_category`
+5. 如判断不确定，标记为"待确认"并给出理由，不强行分类
+
+### 群聊摘要生成
+
+按需对指定群、指定时段生成摘要:
+
+1. 从 `messages` 表读取目标消息: `SELECT sender, content, timestamp FROM messages WHERE group_id=? AND timestamp BETWEEN ? AND ? ORDER BY timestamp`
+2. 生成结构化摘要，输出格式:
+   - **要点**: 讨论了什么
+   - **决策**: 定了什么事
+   - **待办**: 谁需要跟进什么
+3. 摘要写入 `.originfiles/AIWork/summaries/<群名>_<日期>.md`
+4. 如需要，可同时写入 `ai_summaries` 表供前端调用
+
+### 关键信息提取
+
+按需从群消息中提取结构化信息:
+
+1. 从 `messages` 表读取目标群、目标时段消息
+2. 按以下维度提取:
+   - 联系人信息（公司名、职位）
+   - 技术参数（规格、标准、指标值）
+   - 工期节点（计划日期、里程碑事件）
+   - 文件/图纸引用（编号、版本）
+3. 提取结果写入 `.originfiles/AIWork/extractions/<群名>_<日期>.md`
+4. 如需要，可同时写入 `ai_extractions` 表供前端调用
+
+### AI 产出物存放
+
+| 类型 | 文件路径 | 用途 |
+|------|---------|------|
+| 摘要 | `.originfiles/AIWork/summaries/<群名>_<日期>.md` | 版本可追踪的 Markdown |
+| 信息提取 | `.originfiles/AIWork/extractions/<群名>_<日期>.md` | 版本可追踪的 Markdown |
+
 ## 项目改造背景
 
 当前项目是方案一(Flask+SQLite)的落地实现。改造目标是将静态 HTML/JSON 台账(原方案)升级为支持动态刷新、分类筛选、全文检索的交互式 Web 应用。`docs/` 目录包含完整的方案设计、需求对照和后续 Docker/AI 增强规划。

@@ -13,6 +13,7 @@ document.addEventListener('DOMContentLoaded', function () {
   loadProjects();
   loadAll();
   document.getElementById('refresh-btn').addEventListener('click', onRefresh);
+  document.getElementById('export-btn').addEventListener('click', onExport);
   document.getElementById('search-input').addEventListener('keydown', function (e) {
     if (e.key === 'Enter') onSearch();
   });
@@ -441,6 +442,19 @@ function closeDrawer() {
   setTimeout(function () {
     document.getElementById('drawer-body').innerHTML = '';
   }, 300);
+}
+
+function onExport() {
+  var qs = 'project=' + encodeURIComponent(currentProject);
+  if (currentCategory && currentCategory !== '全部') {
+    qs += '&category=' + encodeURIComponent(currentCategory);
+  }
+  var a = document.createElement('a');
+  a.href = '/api/export/excel?' + qs;
+  a.download = '';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
 }
 
 function onRefresh() {

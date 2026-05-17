@@ -1,7 +1,10 @@
 import threading
 import time
 import subprocess
-from flask import Flask, render_template, request, jsonify
+import io
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from flask import Flask, render_template, request, jsonify, send_file
 from .config import TEMPLATES_DIR, STATIC_DIR, FLASK_HOST, FLASK_PORT, get_wx_file_url, get_wx_file_path
 from .database import (
     init_db, get_all_groups, get_group, get_categories,
@@ -199,6 +202,97 @@ def api_auto_sync_stop():
     global _auto_sync_running
     _auto_sync_running = False
     return jsonify({"running": False})
+
+
+@app.route("/api/export/excel")
+def api_export_excel():
+    project = request.args.get("project", "Laldia")
+    category = request.args.get("category")
+    groups = get_all_groups(category=category, project=project)
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "微信群台账"
+
+    header_font = Font(name="微软雅黑", size=10, bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="1A1F25", end_color="1A1F25", fill_type="solid")
+    header_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    thin_border = Border(
+        left=Side(style="thin", color="D5DCE4"),
+        right=Side(style="thin", color="D5DCE4"),
+        top=Side(style="thin", color="D5DCE4"),
+        bottom=Side(style="thin", color="D5DCE4"),
+    )
+    cell_font = Font(name="微软雅黑", size=9, color="3A4454")
+    cell_align = Alignment(vertical="top", wrap_text=True)
+    name_font = Font(name="微软雅黑", size=9, bold=True, color="1A1F25")
+    time_font = Font(name="Consolas", size=9, color="6B7B8D")
+
+    headers = ["#", "群名", "分类", "子分类", "最后活跃", "消息数", "群主", "最近3条消息", "联系信息"]
+    col_widths = [4, 28, 12, 12, 18, 8, 14, 55, 28]
+
+    for ci, h in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=ci, value=h)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_align
+        cell.border = thin_border
+        ws.column_dimensions[openpyxl.utils.get_column_letter(ci)].width = col_widths[ci - 1]
+
+    for ri, g in enumerate(groups, 1):
+        gid = g["id"]
+        idx = ri
+        name = g.get("name", "")
+        cat = g.get("category", "")
+        sub = g.get("sub_category", "")
+        last_active = g.get("last_active_date", "")
+        msg_count = get_message_count(gid)
+        creator = g.get("group_creator", "")
+
+        msgs = get_latest_messages(gid, 3)
+        msgs_text = ""
+        for m in msgs:
+            time_part = m["msg_date"] if m["msg_date"] else ""
+            sender = m["sender"] if m["sender"] else ""
+            content = m["content"] if m["content"] else ""
+            content = content.replace("\n", " ").replace("\r", "")
+            if len(content) > 120:
+                content = content[:120] + "..."
+            msgs_text += f"{time_part} {sender}: {content}\n"
+        msgs_text = msgs_text.rstrip("\n")
+
+        contacts = get_contacts(group_id=gid)
+        contacts_text = "\n".join(
+            f"{c['sender_name']} / {c['email']}" if c.get("email") else c.get("sender_name", "")
+            for c in contacts[:8]
+        )
+
+        row_data = [idx, name, cat, sub, last_active, msg_count, creator, msgs_text, contacts_text]
+        for ci, val in enumerate(row_data, 1):
+            cell = ws.cell(row=ri + 1, column=ci, value=val if val is not None else "")
+            cell.font = name_font if ci == 2 else cell_font
+            if ci == 5:
+                cell.font = time_font
+            cell.alignment = cell_align
+            cell.border = thin_border
+
+    ws.freeze_panes = "A2"
+    ws.auto_filter.ref = ws.dimensions
+
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    import datetime
+    today = datetime.date.today().strftime("%Y%m%d")
+    filename = f"微信群台账_{project}_{today}.xlsx"
+
+    return send_file(
+        output,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name=filename,
+    )
 
 
 if __name__ == "__main__":
