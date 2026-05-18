@@ -1,4 +1,5 @@
 var currentCategory = '全部';
+var currentCategoryFilter = '';
 var currentCreatorFilter = '';
 var currentProject = 'Laldia';
 var groupsData = [];
@@ -24,6 +25,11 @@ document.addEventListener('DOMContentLoaded', function () {
   document.getElementById('sync-modal-overlay').addEventListener('click', closeSyncModal);
   document.getElementById('search-panel-close').addEventListener('click', closeSearchPanel);
   document.getElementById('project-select').addEventListener('change', onProjectChange);
+
+  document.getElementById('category-filter').addEventListener('change', function () {
+    currentCategoryFilter = this.value;
+    filterTable();
+  });
 
   document.getElementById('creator-filter').addEventListener('change', function () {
     currentCreatorFilter = this.value;
@@ -71,6 +77,8 @@ function onProjectChange() {
 
 function loadAll() {
   currentCategory = '全部';
+  currentCategoryFilter = '';
+  document.getElementById('category-filter').value = '';
 
   fetch('/api/categories?project=' + encodeURIComponent(currentProject))
     .then(function (r) { return r.json(); })
@@ -82,6 +90,7 @@ function loadAll() {
     .then(function (groups) {
       groupsData = groups;
       updateCreatorFilter(groups);
+      updateCategoryFilterOptions();
       renderTable(groups);
       updateMeta(groups);
       loadAllLatestMessages(groups);
@@ -126,6 +135,47 @@ function updateCreatorFilter(groups) {
     sel.value = '';
     currentCreatorFilter = '';
   }
+}
+
+function updateCategoryFilterOptions() {
+  var sel = document.getElementById('category-filter');
+  var prevVal = sel.value;
+  sel.textContent = '';
+
+  if (currentCategory === '全部') {
+    var defaultOpt = document.createElement('option');
+    defaultOpt.value = '';
+    defaultOpt.textContent = '按分类筛选';
+    sel.appendChild(defaultOpt);
+    ORDERED_CATS.forEach(function (c) {
+      var opt = document.createElement('option');
+      opt.value = c;
+      opt.textContent = c;
+      sel.appendChild(opt);
+    });
+  } else {
+    var defaultOpt = document.createElement('option');
+    defaultOpt.value = '';
+    defaultOpt.textContent = '按子分类筛选';
+    sel.appendChild(defaultOpt);
+    var subCats = [];
+    var seen = {};
+    groupsData.forEach(function (g) {
+      if (g.category === currentCategory && g.sub_category && !seen[g.sub_category]) {
+        seen[g.sub_category] = true;
+        subCats.push(g.sub_category);
+      }
+    });
+    subCats.sort();
+    subCats.forEach(function (sc) {
+      var opt = document.createElement('option');
+      opt.value = sc;
+      opt.textContent = sc;
+      sel.appendChild(opt);
+    });
+  }
+
+  sel.value = prevVal;
 }
 
 function renderTabs(categories) {
@@ -207,6 +257,9 @@ function setActiveTab(tab, category) {
   document.querySelectorAll('.tab').forEach(function (t) { t.classList.remove('active'); });
   tab.classList.add('active');
   currentCategory = category;
+  currentCategoryFilter = '';
+  updateCategoryFilterOptions();
+  document.getElementById('category-filter').value = '';
   filterTable();
 }
 
@@ -214,6 +267,13 @@ function filterTable() {
   var filtered = groupsData;
   if (currentCategory !== '全部') {
     filtered = filtered.filter(function (g) { return g.category === currentCategory; });
+  }
+  if (currentCategoryFilter !== '') {
+    if (currentCategory === '全部') {
+      filtered = filtered.filter(function (g) { return g.category === currentCategoryFilter; });
+    } else {
+      filtered = filtered.filter(function (g) { return g.sub_category === currentCategoryFilter; });
+    }
   }
   if (currentCreatorFilter !== '') {
     filtered = filtered.filter(function (g) { return g.group_creator === currentCreatorFilter; });
@@ -558,8 +618,8 @@ function loadDrawerExtractions(groupId) {
         grouped[e.extract_type].push(e);
       });
 
-      var typeOrder = ['联系人', '工期节点', '技术参数', '文件引用'];
-      var typeLabels = { '联系人': '联系人', '工期节点': '工期节点', '技术参数': '技术参数', '文件引用': '文件引用' };
+      var typeOrder = ['联系人', '工期节点', '技术参数', '文件引用', '专业/供货类别'];
+      var typeLabels = { '联系人': '联系人', '工期节点': '工期节点', '技术参数': '技术参数', '文件引用': '文件引用', '专业/供货类别': '专业/供货类别' };
 
       typeOrder.forEach(function(extType) {
         var items = grouped[extType];
@@ -585,7 +645,22 @@ function loadDrawerExtractions(groupId) {
             } else if (extType === '技术参数') {
               row.textContent = [content['参数'], content['值']].filter(Boolean).join(': ');
             } else if (extType === '文件引用') {
-              row.textContent = [content['文件'], content['日期']].filter(Boolean).join(' - ');
+              var filename = content['文件'];
+              var msgDate = content['msg_date'] || content['日期'];
+              if (filename) {
+                var fileLink = document.createElement('span');
+                fileLink.className = 'file-link';
+                fileLink.textContent = '[文件] ' + filename;
+                if (content['说明']) fileLink.textContent += ' (' + content['说明'] + ')';
+                fileLink.addEventListener('click', function () {
+                  onFileClick(filename, msgDate);
+                });
+                row.appendChild(fileLink);
+              } else {
+                row.textContent = JSON.stringify(content);
+              }
+            } else if (extType === '专业/供货类别') {
+              row.textContent = [content['类别'], content['专业'], content['说明']].filter(Boolean).join(' / ');
             } else {
               row.textContent = JSON.stringify(content);
             }
@@ -1107,6 +1182,13 @@ function refreshCurrentView() {
       var filtered = groupsData;
       if (currentCategory !== '全部') {
         filtered = filtered.filter(function (g) { return g.category === currentCategory; });
+      }
+      if (currentCategoryFilter !== '') {
+        if (currentCategory === '全部') {
+          filtered = filtered.filter(function (g) { return g.category === currentCategoryFilter; });
+        } else {
+          filtered = filtered.filter(function (g) { return g.sub_category === currentCategoryFilter; });
+        }
       }
       if (currentCreatorFilter !== '') {
         filtered = filtered.filter(function (g) { return g.group_creator === currentCreatorFilter; });
