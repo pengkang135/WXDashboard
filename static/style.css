@@ -201,6 +201,33 @@ body {
   position: sticky;
   top: 92px;
   z-index: 19;
+  justify-content: space-between;
+}
+
+.category-tabs-inner {
+  display: flex;
+  gap: 2px;
+  flex-wrap: wrap;
+  align-items: center;
+  flex: 1;
+}
+
+.filter-select {
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  padding: 5px 10px;
+  border: 1px solid var(--ash);
+  border-radius: var(--radius);
+  background: var(--warm-white);
+  color: var(--slate);
+  cursor: pointer;
+  outline: none;
+  max-width: 160px;
+  flex-shrink: 0;
+  transition: border-color 0.15s;
+}
+.filter-select:hover, .filter-select:focus {
+  border-color: var(--accent);
 }
 
 .tab {

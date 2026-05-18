@@ -1,4 +1,5 @@
 var currentCategory = '全部';
+var currentCreatorFilter = '';
 var currentProject = 'Laldia';
 var groupsData = [];
 var drawerGroupId = null;
@@ -23,6 +24,11 @@ document.addEventListener('DOMContentLoaded', function () {
   document.getElementById('sync-modal-overlay').addEventListener('click', closeSyncModal);
   document.getElementById('search-panel-close').addEventListener('click', closeSearchPanel);
   document.getElementById('project-select').addEventListener('change', onProjectChange);
+
+  document.getElementById('creator-filter').addEventListener('change', function () {
+    currentCreatorFilter = this.value;
+    filterTable();
+  });
 
   document.getElementById('drawer-tabs').addEventListener('click', function(e) {
     var tab = e.target.closest('.drawer-tab');
@@ -64,6 +70,8 @@ function onProjectChange() {
 }
 
 function loadAll() {
+  currentCategory = '全部';
+
   fetch('/api/categories?project=' + encodeURIComponent(currentProject))
     .then(function (r) { return r.json(); })
     .then(function (cats) { renderTabs(cats); })
@@ -73,6 +81,7 @@ function loadAll() {
     .then(function (r) { return r.json(); })
     .then(function (groups) {
       groupsData = groups;
+      updateCreatorFilter(groups);
       renderTable(groups);
       updateMeta(groups);
       loadAllLatestMessages(groups);
@@ -85,6 +94,38 @@ function updateMeta(groups) {
   var now = new Date();
   var meta = document.getElementById('meta-info');
   meta.textContent = '更新: ' + now.toLocaleString('zh-CN') + ' | ' + groups.length + ' 个群';
+}
+
+function updateCreatorFilter(groups) {
+  var sel = document.getElementById('creator-filter');
+  var prevVal = sel.value;
+  var creators = [];
+  var seen = {};
+  groups.forEach(function (g) {
+    var c = g.group_creator;
+    if (c && !seen[c]) {
+      seen[c] = true;
+      creators.push(c);
+    }
+  });
+  creators.sort();
+  sel.textContent = '';
+  var defaultOpt = document.createElement('option');
+  defaultOpt.value = '';
+  defaultOpt.textContent = '按群主筛选';
+  sel.appendChild(defaultOpt);
+  creators.forEach(function (c) {
+    var opt = document.createElement('option');
+    opt.value = c;
+    opt.textContent = c;
+    sel.appendChild(opt);
+  });
+  if (creators.indexOf(prevVal) !== -1) {
+    sel.value = prevVal;
+  } else {
+    sel.value = '';
+    currentCreatorFilter = '';
+  }
 }
 
 function renderTabs(categories) {
@@ -170,9 +211,13 @@ function setActiveTab(tab, category) {
 }
 
 function filterTable() {
-  var filtered = currentCategory === '全部'
-    ? groupsData
-    : groupsData.filter(function (g) { return g.category === currentCategory; });
+  var filtered = groupsData;
+  if (currentCategory !== '全部') {
+    filtered = filtered.filter(function (g) { return g.category === currentCategory; });
+  }
+  if (currentCreatorFilter !== '') {
+    filtered = filtered.filter(function (g) { return g.group_creator === currentCreatorFilter; });
+  }
   renderTable(filtered);
   updateMeta(filtered);
   filtered.forEach(function (g) {
@@ -803,6 +848,9 @@ function onExport() {
   if (currentCategory && currentCategory !== '全部') {
     qs += '&category=' + encodeURIComponent(currentCategory);
   }
+  if (currentCreatorFilter !== '') {
+    qs += '&group_creator=' + encodeURIComponent(currentCreatorFilter);
+  }
   fetch('/api/export/excel?' + qs)
     .then(function(resp) {
       if (!resp.ok) throw new Error('导出失败 (' + resp.status + ')');
@@ -1006,9 +1054,14 @@ function refreshCurrentView() {
     .then(function (r) { return r.json(); })
     .then(function (groups) {
       groupsData = groups;
-      var filtered = currentCategory === '全部'
-        ? groupsData
-        : groupsData.filter(function (g) { return g.category === currentCategory; });
+      updateCreatorFilter(groups);
+      var filtered = groupsData;
+      if (currentCategory !== '全部') {
+        filtered = filtered.filter(function (g) { return g.category === currentCategory; });
+      }
+      if (currentCreatorFilter !== '') {
+        filtered = filtered.filter(function (g) { return g.group_creator === currentCreatorFilter; });
+      }
       renderTable(filtered);
       updateMeta(filtered);
       filtered.forEach(function (g) {

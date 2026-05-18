@@ -74,3 +74,13 @@ def get_wx_file_path(msg_date, filename):
 
 
 _detect_wx_data_dir()
+
+
+# Sync rate limiting (anti-detection)
+# 模拟人类逐群查看节奏，防止被微信检测为外挂
+# 可通过同名环境变量覆盖
+import os as _os2
+SYNC_DELAY_MIN = float(_os2.environ.get("WX_SYNC_DELAY_MIN", "3.0"))
+SYNC_DELAY_MAX = float(_os2.environ.get("WX_SYNC_DELAY_MAX", "8.0"))
+SYNC_BATCH_LIMIT = int(_os2.environ.get("WX_SYNC_BATCH_LIMIT", "200"))
+WX_MIN_INTERVAL = float(_os2.environ.get("WX_MIN_INTERVAL", "1.5"))

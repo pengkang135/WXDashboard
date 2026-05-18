@@ -31,7 +31,7 @@ def _auto_sync_loop():
         if not _auto_sync_running:
             break
         # 心跳超时(90秒)则自动停止
-        if _last_heartbeat and time.time() - _last_heartbeat > 90:
+        if _last_heartbeat and time.time() - _last_heartbeat > 600:
             _auto_sync_running = False
             break
         try:
@@ -49,7 +49,8 @@ def dashboard():
 def api_groups():
     category = request.args.get("category")
     project = request.args.get("project", "Laldia")
-    groups = get_all_groups(category=category, project=project)
+    group_creator = request.args.get("group_creator")
+    groups = get_all_groups(category=category, project=project, group_creator=group_creator)
     for g in groups:
         g["message_count"] = get_message_count(g["id"])
     return jsonify(groups)
@@ -245,8 +246,8 @@ def api_auto_sync_start():
     global _auto_sync_thread, _auto_sync_running, _auto_sync_interval
     data = request.get_json(silent=True) or {}
     interval = int(data.get("interval", 60))
-    if interval < 10:
-        interval = 10
+    if interval < 120:
+        interval = 120
     _auto_sync_interval = interval
 
     if _auto_sync_running:
@@ -269,7 +270,8 @@ def api_auto_sync_stop():
 def api_export_excel():
     project = request.args.get("project", "Laldia")
     category = request.args.get("category")
-    groups = get_all_groups(category=category, project=project)
+    group_creator = request.args.get("group_creator")
+    groups = get_all_groups(category=category, project=project, group_creator=group_creator)
 
     wb = openpyxl.Workbook()
     ws = wb.active

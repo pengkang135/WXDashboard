@@ -3,7 +3,10 @@ import os
 import sys
 import subprocess
 import shutil
+import time
+import random
 from datetime import datetime
+from .config import SYNC_DELAY_MIN, SYNC_DELAY_MAX, SYNC_BATCH_LIMIT, WX_MIN_INTERVAL
 from .database import (
     get_db, upsert_message, upsert_group, update_group_stats, add_sync_log,
     get_all_group_names, get_message_count
@@ -101,7 +104,21 @@ def _infer_subcategory(name, category=None):
     return ""
 
 
+def _human_delay(reason_hint=""):
+    delay = random.uniform(SYNC_DELAY_MIN, SYNC_DELAY_MAX)
+    if reason_hint:
+        print(f"[延迟 {delay:.1f}s] {reason_hint}")
+    time.sleep(delay)
+
+
+_last_wx_call = 0.0
+
+
 def _run_wx(args, timeout=120):
+    global _last_wx_call
+    elapsed = time.time() - _last_wx_call
+    if elapsed < WX_MIN_INTERVAL:
+        time.sleep(WX_MIN_INTERVAL - elapsed)
     import tempfile, os as _os
     if _wx_js:
         cmd_list = ["node", _wx_js] + args
@@ -144,6 +161,7 @@ def _run_wx(args, timeout=120):
         if "init" in stderr.lower():
             raise RuntimeError("wx-cli 未初始化，请运行: wx init")
         raise RuntimeError(f"wx-cli 错误: {stderr or '未知错误'}")
+    _last_wx_call = time.time()
     return (stdout or "").strip()
 
 
@@ -172,6 +190,7 @@ def discover_new_groups(project=None):
         upsert_group(name, category, sub_category=sub_category, project=proj, group_creator=owner)
         group_names.add(name)
         new_groups.append((name, category, sub_category, proj))
+        _human_delay(f"发现新群: {name}")
 
     return new_groups
 
@@ -221,6 +240,7 @@ def sync_incremental():
 
     # Step 4: for each group, pull messages since last known date
     for gname in all_groups:
+        _human_delay(f"同步群: {gname}")
         try:
             conn = get_db()
             group = conn.execute("SELECT id FROM groups WHERE name=?", (gname,)).fetchone()
@@ -238,7 +258,7 @@ def sync_incremental():
             since_date = last["msg_date"] if last else "2025-01-01"
 
             output = _run_wx(
-                ["history", gname, "--json", "--since", since_date, "-n", "500"],
+                ["history", gname, "--json", "--since", since_date, "-n", str(SYNC_BATCH_LIMIT)],
                 timeout=300
             )
             messages = json.loads(output) if output else []
@@ -272,7 +292,7 @@ def sync_incremental():
     return stats
 
 
-def sync_full(group_name, limit=2000):
+def sync_full(group_name, limit=500):
     output = _run_wx(["history", group_name, "--json", "-n", str(limit)], timeout=300)
     messages = json.loads(output) if output else []
 
@@ -299,10 +319,11 @@ def sync_full(group_name, limit=2000):
     return {"group": group_name, "pulled": len(messages), "new": new_count, "total": count}
 
 
-def sync_all_groups_full(limit=2000):
+def sync_all_groups_full(limit=500):
     results = []
     errors = []
     for gname in get_all_group_names():
+        _human_delay(f"全量同步群: {gname}")
         try:
             r = sync_full(gname, limit)
             results.append(r)

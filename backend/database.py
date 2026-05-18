@@ -113,7 +113,7 @@ def init_db():
     conn.close()
 
 
-def get_all_groups(category=None, project=None):
+def get_all_groups(category=None, project=None, group_creator=None):
     conn = get_db()
     clauses = ["deleted=0"]
     params = []
@@ -123,6 +123,9 @@ def get_all_groups(category=None, project=None):
     if project:
         clauses.append("project=?")
         params.append(project)
+    if group_creator:
+        clauses.append("group_creator=?")
+        params.append(group_creator)
     sql = f"SELECT * FROM groups WHERE {' AND '.join(clauses)} ORDER BY last_active_date DESC, id DESC"
     rows = conn.execute(sql, params).fetchall()
     conn.close()
@@ -355,7 +358,10 @@ def get_projects():
 
 def set_subcategory(group_id, sub_category):
     conn = get_db()
-    conn.execute("UPDATE groups SET sub_category=? WHERE id=?", (sub_category, group_id))
+    conn.execute(
+        "UPDATE groups SET sub_category=?, manual_category=1 WHERE id=?",
+        (sub_category, group_id)
+    )
     conn.commit()
     conn.close()
 
@@ -387,3 +393,70 @@ def get_extractions(group_id):
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+def get_messages_for_ai_processing(group_id, date_from=None, date_to=None, max_messages=200):
+    """AI处理用消息读取。按时间正序分页，排除系统消息。供分类/摘要/提取技能从SQLite读取，替代wx-cli调用。"""
+    conn = get_db()
+    clauses = ["group_id=?", "msg_type != '系统'"]
+    params = [group_id]
+
+    if date_from:
+        clauses.append("msg_date >= ?")
+        params.append(date_from)
+    if date_to:
+        clauses.append("msg_date <= ?")
+        params.append(date_to)
+
+    where = " AND ".join(clauses)
+    rows = conn.execute(f"""
+        SELECT id, sender, content, msg_time, msg_date, msg_type
+        FROM messages WHERE {where}
+        ORDER BY msg_time ASC LIMIT ?
+    """, params + [max_messages]).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_group_message_stats():
+    """获取所有群的消息统计，供AI技能决定处理哪些群。"""
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT g.id, g.name, g.category, g.project,
+               COUNT(m.id) as msg_count,
+               MIN(m.msg_date) as earliest,
+               MAX(m.msg_date) as latest
+        FROM groups g
+        LEFT JOIN messages m ON m.group_id = g.id
+        WHERE g.deleted = 0
+        GROUP BY g.id
+        ORDER BY msg_count DESC
+    """).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_groups_for_classification():
+    """获取待分类群及其最近5条样本消息，供AI分类使用。"""
+    conn = get_db()
+    groups = conn.execute("""
+        SELECT id, name, category FROM groups
+        WHERE deleted=0 AND (category IS NULL OR category = '' OR category = '供应商咨询')
+        ORDER BY id
+    """).fetchall()
+
+    result = []
+    for g in groups:
+        msgs = conn.execute("""
+            SELECT sender, content, msg_date FROM messages
+            WHERE group_id=? AND msg_type != '系统'
+            ORDER BY msg_time DESC LIMIT 5
+        """, (g["id"],)).fetchall()
+        result.append({
+            "id": g["id"],
+            "name": g["name"],
+            "category": g["category"],
+            "sample_messages": [dict(m) for m in msgs]
+        })
+    conn.close()
+    return result

@@ -6,9 +6,13 @@ data/*.db
 *.db-journal
 *.db-wal
 *.db-shm
+data/*.log
+_*.py
+_tmp_*.py
 .DS_Store
 Thumbs.db
 .originfiles/
-.claude/
+.claude/*
+!.claude/skills/
 .playwright-mcp/
 backend/__pycache__/
