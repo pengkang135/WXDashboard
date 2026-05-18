@@ -23,6 +23,9 @@ _auto_sync_running = False
 _auto_sync_last_result = None
 _last_heartbeat = 0
 
+_manual_sync_running = False
+_manual_sync_result = None
+
 
 def _auto_sync_loop():
     global _auto_sync_running, _auto_sync_last_result, _last_heartbeat
@@ -98,11 +101,29 @@ def api_search():
 
 @app.route("/api/sync/refresh", methods=["POST"])
 def api_sync_refresh():
-    try:
-        stats = sync_incremental()
-        return jsonify(stats)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    global _manual_sync_running, _manual_sync_result
+    if _manual_sync_running:
+        return jsonify({"status": "running", "message": "同步已在执行中"})
+    _manual_sync_running = True
+    _manual_sync_result = None
+    def _run():
+        global _manual_sync_running, _manual_sync_result
+        try:
+            _manual_sync_result = sync_incremental()
+        except Exception as e:
+            _manual_sync_result = {"error": str(e)}
+        finally:
+            _manual_sync_running = False
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"status": "started"})
+
+
+@app.route("/api/sync/refresh/status")
+def api_sync_refresh_status():
+    return jsonify({
+        "running": _manual_sync_running,
+        "result": _manual_sync_result
+    })
 
 
 @app.route("/api/sync/pull-all", methods=["POST"])

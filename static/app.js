@@ -900,21 +900,15 @@ function onRefresh() {
 
       fetch('/api/sync/refresh', { method: 'POST' })
         .then(function (r) { return r.json(); })
-        .then(function (data) {
-          progress.style.width = '100%';
-          if (data.error) {
-            progress.style.background = '#b84c4c';
-            statusText.textContent = data.error;
-          } else {
-            progress.style.background = '#4a7c59';
-            var parts = ['同步完成: 拉取 ' + (data.messages_new || 0) + ' 条新消息'];
-            if (data.new_groups_discovered && data.new_groups_discovered.length > 0) {
-              parts.push('发现 ' + data.new_groups_discovered.length + ' 个新群');
-            }
-            parts.push((data.groups_updated || 0) + ' 个群已更新');
-            statusText.textContent = parts.join(', ');
+        .then(function (initData) {
+          if (initData.status === 'running') {
+            statusText.textContent = '同步已在执行中，等待完成...';
+            pollSyncStatus();
+            return;
           }
-          closeBtn.style.display = '';
+          statusText.textContent = '正在调用 wx-cli 拉取最新消息...';
+          progress.style.width = '50%';
+          pollSyncStatus();
         })
         .catch(function (e) {
           progress.style.width = '100%';
@@ -922,16 +916,79 @@ function onRefresh() {
           statusText.textContent = '请求失败: ' + e.message;
           closeBtn.style.display = '';
         });
+
+      function pollSyncStatus() {
+        var attempts = 0;
+        var timer = setInterval(function () {
+          attempts++;
+          var pct = Math.min(40 + attempts * 3, 90);
+          progress.style.width = pct + '%';
+          fetch('/api/sync/refresh/status')
+            .then(function (r) { return r.json(); })
+            .then(function (s) {
+              if (!s.running) {
+                clearInterval(timer);
+                progress.style.width = '100%';
+                var data = s.result;
+                if (!data) {
+                  statusText.textContent = '同步完成';
+                  progress.style.background = '#4a7c59';
+                } else if (data.error) {
+                  progress.style.background = '#b84c4c';
+                  statusText.textContent = data.error;
+                } else {
+                  progress.style.background = '#4a7c59';
+                  var parts = ['同步完成: 拉取 ' + (data.messages_new || 0) + ' 条新消息'];
+                  if (data.new_groups_discovered && data.new_groups_discovered.length > 0) {
+                    parts.push('发现 ' + data.new_groups_discovered.length + ' 个新群');
+                  }
+                  parts.push((data.groups_updated || 0) + ' 个群已更新');
+                  statusText.textContent = parts.join(', ');
+                }
+                closeBtn.style.display = '';
+                if (window._onSyncComplete) window._onSyncComplete();
+              }
+            });
+        }, 2000);
+      }
     })
     .catch(function (e) {
       progress.style.width = '40%';
       fetch('/api/sync/refresh', { method: 'POST' })
         .then(function (r) { return r.json(); })
-        .then(function (data) {
-          progress.style.width = '100%';
-          progress.style.background = data.error ? '#b84c4c' : '#4a7c59';
-          statusText.textContent = data.error || ('同步完成: ' + (data.messages_new || 0) + ' 条新消息');
-          closeBtn.style.display = '';
+        .then(function (initData) {
+          statusText.textContent = '正在调用 wx-cli 拉取最新消息...';
+          progress.style.width = '50%';
+          pollSyncStatus2();
+          function pollSyncStatus2() {
+            var attempts = 0;
+            var timer = setInterval(function () {
+              attempts++;
+              var pct = Math.min(40 + attempts * 3, 90);
+              progress.style.width = pct + '%';
+              fetch('/api/sync/refresh/status')
+                .then(function (r) { return r.json(); })
+                .then(function (s) {
+                  if (!s.running) {
+                    clearInterval(timer);
+                    progress.style.width = '100%';
+                    var data = s.result;
+                    if (!data) {
+                      statusText.textContent = '同步完成';
+                      progress.style.background = '#4a7c59';
+                    } else if (data.error) {
+                      progress.style.background = '#b84c4c';
+                      statusText.textContent = data.error;
+                    } else {
+                      progress.style.background = '#4a7c59';
+                      statusText.textContent = '同步完成: ' + (data.messages_new || 0) + ' 条新消息';
+                    }
+                    closeBtn.style.display = '';
+                    if (window._onSyncComplete) window._onSyncComplete();
+                  }
+                });
+            }, 2000);
+          }
         })
         .catch(function (e2) {
           progress.style.width = '100%';
@@ -1035,15 +1092,7 @@ function getActivityClass(dateStr) {
 }
 
 function doAutoSync() {
-  fetch('/api/sync/refresh', { method: 'POST' })
-    .then(function (r) { return r.json(); })
-    .then(function (data) {
-      if (data.error) return;
-      if (data.messages_new > 0) {
-        refreshCurrentView();
-      }
-    })
-    .catch(function () {});
+  fetch('/api/sync/refresh', { method: 'POST' }).catch(function () {});
 }
 
 function refreshCurrentView() {
