@@ -457,11 +457,20 @@ function renderMessagesCell(groupId, msgs) {
     li.appendChild(senderSpan);
 
     var fileInfo = parseFileInfo(m);
-    if (fileInfo) {
+    if (fileInfo && fileInfo.type === 'file') {
       var fileSpan = document.createElement('span');
       fileSpan.className = 'file-indicator';
       fileSpan.textContent = '[文件] ' + truncate(fileInfo.filename, 40);
       li.appendChild(fileSpan);
+    } else if (fileInfo && fileInfo.type === 'image') {
+      var imgSpan = document.createElement('span');
+      imgSpan.className = 'file-indicator';
+      imgSpan.textContent = '[图片]';
+      imgSpan.style.cursor = 'pointer';
+      imgSpan.addEventListener('click', function () {
+        onImageClick(fileInfo.msg_date, fileInfo.timestamp);
+      });
+      li.appendChild(imgSpan);
     } else {
       li.appendChild(document.createTextNode(truncate(m.content, 60)));
     }
@@ -496,7 +505,11 @@ function renderContactsCell(groupId, contacts) {
     var div = document.createElement('div');
     div.className = 'contact-item';
     var parts = [];
-    if (c.sender_name) parts.push(c.sender_name);
+    if (c.sender_name && c.display_name) {
+      parts.push(c.sender_name + '（' + c.display_name + '）');
+    } else if (c.sender_name) {
+      parts.push(c.sender_name);
+    }
     if (c.email) parts.push(c.email);
     if (c.phone) parts.push(c.phone);
     div.textContent = parts.join(' / ');
@@ -639,7 +652,13 @@ function loadDrawerExtractions(groupId) {
           try {
             var content = JSON.parse(item.content);
             if (extType === '联系人') {
-              row.textContent = [content['姓名'], content['角色'], content['邮箱']].filter(Boolean).join(' / ');
+              var displayName = content['姓名'] || '';
+              if (content['微信名'] && content['真实称呼']) {
+                displayName = content['微信名'] + '（' + content['真实称呼'] + '）';
+              } else if (content['微信名']) {
+                displayName = content['微信名'];
+              }
+              row.textContent = [displayName, content['角色'], content['邮箱']].filter(Boolean).join(' / ');
             } else if (extType === '工期节点') {
               row.textContent = [content['节点'], content['日期']].filter(Boolean).join(': ');
             } else if (extType === '技术参数') {
@@ -867,7 +886,7 @@ function loadDrawerMessages(groupId, offset) {
         var content = document.createElement('div');
         content.className = 'content';
         var fileInfo = parseFileInfo(m);
-        if (fileInfo) {
+        if (fileInfo && fileInfo.type === 'file') {
           var fileLink = document.createElement('span');
           fileLink.className = 'file-link';
           fileLink.textContent = '[文件] ' + fileInfo.filename;
@@ -875,6 +894,30 @@ function loadDrawerMessages(groupId, offset) {
             onFileClick(fileInfo.filename, fileInfo.msg_date);
           });
           content.appendChild(fileLink);
+        } else if (fileInfo && fileInfo.type === 'image') {
+          var imgWrapper = document.createElement('div');
+          imgWrapper.className = 'inline-image-wrapper';
+          var imgEl = document.createElement('img');
+          imgEl.className = 'inline-image';
+          var imgUrl = '/api/images/view?msg_date=' + encodeURIComponent(fileInfo.msg_date);
+          if (fileInfo.timestamp) imgUrl += '&timestamp=' + encodeURIComponent(fileInfo.timestamp);
+          if (fileInfo.local_id != null) imgUrl += '&local_id=' + encodeURIComponent(fileInfo.local_id);
+          imgEl.src = imgUrl;
+          imgEl.alt = '[图片]';
+          imgEl.loading = 'lazy';
+          imgEl.style.cursor = 'pointer';
+          imgEl.addEventListener('error', function () {
+            while (imgWrapper.firstChild) imgWrapper.removeChild(imgWrapper.firstChild);
+            var fallback = document.createElement('span');
+            fallback.className = 'file-link';
+            fallback.textContent = '[图片 — 解密失败，请先在微信中查看该图片后重试]';
+            imgWrapper.appendChild(fallback);
+          });
+          imgEl.addEventListener('click', function () {
+            window.open(imgUrl, '_blank');
+          });
+          imgWrapper.appendChild(imgEl);
+          content.appendChild(imgWrapper);
         } else {
           content.textContent = m.content;
         }
@@ -1124,7 +1167,7 @@ function onSearch() {
         var contentEl = document.createElement('div');
         contentEl.className = 'result-content';
         var fileInfo = parseFileInfo(m);
-        if (fileInfo) {
+        if (fileInfo && fileInfo.type === 'file') {
           var fileLink = document.createElement('span');
           fileLink.className = 'file-link';
           fileLink.textContent = '[文件] ' + fileInfo.filename;
@@ -1133,6 +1176,15 @@ function onSearch() {
             onFileClick(fileInfo.filename, fileInfo.msg_date);
           });
           contentEl.appendChild(fileLink);
+        } else if (fileInfo && fileInfo.type === 'image') {
+          var imgLink = document.createElement('span');
+          imgLink.className = 'file-link';
+          imgLink.textContent = '[图片]';
+          imgLink.addEventListener('click', function (e) {
+            e.stopPropagation();
+            onImageClick(fileInfo.msg_date, fileInfo.timestamp);
+          });
+          contentEl.appendChild(imgLink);
         } else {
           contentEl.textContent = truncate(m.content, 140);
         }
@@ -1213,8 +1265,18 @@ function parseFileInfo(msg) {
   if (msg.msg_type && (msg.msg_type.indexOf('文件') !== -1 || msg.msg_type.indexOf('链接') !== -1)) {
     var match = msg.content.match(/^\[文件\]\s*(.+)/);
     if (match) {
-      return { filename: match[1], msg_date: msg.msg_date };
+      return { type: 'file', filename: match[1], msg_date: msg.msg_date };
     }
+  }
+  if (msg.msg_type && msg.msg_type.indexOf('图片') !== -1) {
+    var ts = null;
+    try {
+      if (msg.raw_json) {
+        var raw = JSON.parse(msg.raw_json);
+        ts = raw.timestamp;
+      }
+    } catch(e) {}
+    return { type: 'image', msg_date: msg.msg_date, timestamp: ts, local_id: msg.local_id };
   }
   return null;
 }
@@ -1229,6 +1291,21 @@ function onFileClick(filename, msgDate) {
     })
     .catch(function () {
       alert('打开文件失败: ' + filename);
+    });
+}
+
+function onImageClick(msgDate, timestamp) {
+  var params = 'msg_date=' + encodeURIComponent(msgDate);
+  if (timestamp) params += '&timestamp=' + encodeURIComponent(timestamp);
+  fetch('/api/images/open?' + params, { method: 'POST' })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      if (!data.ok && data.error) {
+        alert('无法打开图片: ' + data.error);
+      }
+    })
+    .catch(function () {
+      alert('打开图片失败');
     });
 }
 

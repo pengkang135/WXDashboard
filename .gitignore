@@ -12,6 +12,7 @@ _*.py
 _tmp_*.py
 .DS_Store
 Thumbs.db
+.wx_image_key
 .originfiles/
 .claude/*
 !.claude/skills/

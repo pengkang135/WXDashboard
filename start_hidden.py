@@ -44,6 +44,10 @@ if not os.path.exists(PYTHON_EXE):
     print(f"venv not found at {PYTHON_EXE}")
     sys.exit(1)
 
+if not os.path.exists(PYTHONW_EXE):
+    print(f"pythonw.exe not found at {PYTHONW_EXE}")
+    sys.exit(1)
+
 print("Initializing database...")
 subprocess.run(
     [PYTHON_EXE, "-c", "from backend.database import init_db; init_db()"],

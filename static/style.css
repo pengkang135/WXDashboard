@@ -802,6 +802,21 @@ thead th {
 }
 .file-link:hover { color: var(--ink); }
 
+.inline-image-wrapper {
+  margin: 6px 0;
+  max-width: 400px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--border, #e0e0e0);
+}
+.inline-image {
+  width: 100%;
+  display: block;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+.inline-image:hover { opacity: 0.9; }
+
 .file-indicator {
   color: var(--accent);
   font-size: 0.78rem;

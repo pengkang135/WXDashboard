@@ -238,7 +238,7 @@ def get_categories(project=None):
 def get_messages(group_id, limit=50, offset=0):
     conn = get_db()
     rows = conn.execute("""
-        SELECT id, group_id, local_id, sender, content, msg_time, msg_date, msg_type
+        SELECT id, group_id, local_id, sender, content, msg_time, msg_date, msg_type, raw_json
         FROM messages WHERE group_id=? ORDER BY msg_time DESC LIMIT ? OFFSET ?
     """, (group_id, limit, offset)).fetchall()
     total = conn.execute(
@@ -251,7 +251,7 @@ def get_messages(group_id, limit=50, offset=0):
 def get_latest_messages(group_id, n=3):
     conn = get_db()
     rows = conn.execute("""
-        SELECT id, group_id, local_id, sender, content, msg_time, msg_date, msg_type
+        SELECT id, group_id, local_id, sender, content, msg_time, msg_date, msg_type, raw_json
         FROM messages WHERE group_id=? AND msg_type != '系统'
         ORDER BY msg_time DESC LIMIT ?
     """, (group_id, n)).fetchall()

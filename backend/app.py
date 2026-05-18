@@ -7,7 +7,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from flask import Flask, render_template, request, jsonify, send_file
 from .config import TEMPLATES_DIR, STATIC_DIR, FLASK_HOST, FLASK_PORT, get_wx_file_url, get_wx_file_path
 from .database import (
-    init_db, get_all_groups, get_group, get_categories,
+    init_db, get_db, get_all_groups, get_group, get_categories,
     get_messages, get_latest_messages, search_messages,
     get_sync_status, get_message_count, get_contacts, get_projects,
     set_subcategory, update_group_category, update_group_settings,
@@ -191,6 +191,125 @@ def api_open_file():
         subprocess.Popen(["explorer", "/select,", _os.path.normpath(file_path)])
         return jsonify({"ok": True})
     return jsonify({"ok": False, "error": "文件不存在"})
+
+
+@app.route("/api/images/open", methods=["POST"])
+def api_open_image():
+    msg_date = request.args.get("msg_date", "")
+    timestamp = request.args.get("timestamp")
+    if timestamp:
+        try:
+            timestamp = int(timestamp)
+        except (TypeError, ValueError):
+            timestamp = None
+
+    from .config import find_image_dat, decrypt_dat_file
+    dat_files = find_image_dat(msg_date, timestamp=timestamp)
+
+    if not dat_files:
+        return jsonify({"ok": False, "error": "未找到对应图片文件"})
+
+    for dat_path in dat_files[:10]:
+        img_data, ext = decrypt_dat_file(dat_path)
+        if img_data and ext:
+            import os as _os
+            import tempfile
+            tmp = tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False)
+            tmp.write(img_data)
+            tmp.close()
+            _os.startfile(tmp.name)
+            return jsonify({"ok": True, "file": _os.path.basename(dat_path)})
+
+    # 解密失败,打开文件所在目录
+    if dat_files:
+        import os as _os
+        subprocess.Popen(["explorer", "/select,", _os.path.normpath(dat_files[0])])
+        return jsonify({"ok": True, "opened": "explorer"})
+
+    return jsonify({"ok": False, "error": "无法解密图片"})
+
+
+@app.route("/api/images/view")
+def api_view_image():
+    """Serve a decrypted image for inline display. Uses chronological matching by local_id."""
+    msg_date = request.args.get("msg_date", "")
+    timestamp = request.args.get("timestamp")
+    local_id = request.args.get("local_id", type=int)
+    if timestamp:
+        try:
+            timestamp = int(timestamp)
+        except (TypeError, ValueError):
+            timestamp = None
+
+    from .config import find_image_dat, decrypt_dat_file
+    dat_files = find_image_dat(msg_date, timestamp=timestamp)
+    if local_id is not None:
+        ordered = _chrono_match(msg_date, local_id)
+        if ordered:
+            dat_files = ordered + dat_files
+
+    for dat_path in dat_files[:10]:
+        img_data, ext = decrypt_dat_file(dat_path)
+        if img_data and ext:
+            mime = "image/" + ("jpeg" if ext == "jpg" else ext)
+            return send_file(io.BytesIO(img_data), mimetype=mime)
+
+    return jsonify({"ok": False, "error": "无法解密图片"}), 404
+
+
+def _chrono_match(msg_date, local_id):
+    """Match .dat files to image messages by chronological ordering."""
+    import json
+    import os as _os
+    from .config import _WX_ATTACH_ROOT
+    if not _WX_ATTACH_ROOT or not msg_date:
+        return []
+    yyyy_mm = msg_date[:7]
+
+    # Collect all .dat files sorted by mtime
+    candidates = []
+    try:
+        for hash_dir in _os.listdir(_WX_ATTACH_ROOT):
+            img_dir = _os.path.join(_WX_ATTACH_ROOT, hash_dir, yyyy_mm, "Img")
+            if not _os.path.isdir(img_dir):
+                continue
+            for f in _os.listdir(img_dir):
+                if not f.endswith('.dat'):
+                    continue
+                fpath = _os.path.join(img_dir, f)
+                if '_t.dat' in f or '_h.dat' in f:
+                    continue
+                candidates.append((_os.path.getmtime(fpath), fpath))
+    except OSError:
+        pass
+    candidates.sort(key=lambda x: x[0])
+
+    # Get all image messages for this month ordered by msg_time
+    try:
+        conn = get_db()
+        rows = conn.execute("""
+            SELECT local_id, raw_json FROM messages
+            WHERE msg_date LIKE ? AND msg_type LIKE '%图片%'
+            ORDER BY msg_time ASC
+        """, (yyy_mm + '%',)).fetchall()
+        conn.close()
+
+        msg_list = []
+        for row in rows:
+            try:
+                raw = json.loads(row['raw_json'] or '{}')
+                ts = raw.get('timestamp', 0)
+            except Exception:
+                ts = 0
+            msg_list.append((row['local_id'], ts))
+        msg_list.sort(key=lambda x: x[1])
+
+        idx = next((i for i, m in enumerate(msg_list) if m[0] == local_id), -1)
+        if 0 <= idx < len(candidates):
+            return [candidates[idx][1]]
+    except Exception:
+        pass
+    return []
 
 
 @app.route("/api/groups/<int:group_id>/subcategory", methods=["POST"])
