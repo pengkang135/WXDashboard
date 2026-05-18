@@ -949,7 +949,7 @@ function onRefresh() {
                 if (window._onSyncComplete) window._onSyncComplete();
               }
             });
-        }, 2000);
+        }, 1000);
       }
     })
     .catch(function (e) {
@@ -987,7 +987,7 @@ function onRefresh() {
                     if (window._onSyncComplete) window._onSyncComplete();
                   }
                 });
-            }, 2000);
+            }, 1000);
           }
         })
         .catch(function (e2) {
