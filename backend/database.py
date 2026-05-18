@@ -441,7 +441,7 @@ def get_groups_for_classification():
     conn = get_db()
     groups = conn.execute("""
         SELECT id, name, category FROM groups
-        WHERE deleted=0 AND (category IS NULL OR category = '' OR category = '供应商咨询')
+        WHERE deleted=0 AND (category IS NULL OR category = '' OR category = '其他')
         ORDER BY id
     """).fetchall()
 

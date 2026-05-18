@@ -93,7 +93,7 @@ def _infer_category(name):
     for keywords, cat in CATEGORY_RULES:
         if any(kw in lower for kw in keywords):
             return cat
-    return "供应商咨询"
+    return "其他"
 
 
 def _infer_subcategory(name, category=None):
@@ -195,51 +195,90 @@ def discover_new_groups(project=None):
     return new_groups
 
 
-def sync_incremental():
-    stats = {"groups_updated": 0, "messages_new": 0, "errors": [],
-             "new_groups_discovered": [], "contacts_extracted": 0}
+SNAPSHOT_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                             "data", "sessions_snapshot.json")
+_sync_call_count = 0
 
-    # Step 1: discover new groups (all projects)
+
+def _load_sessions_snapshot():
+    if os.path.isfile(SNAPSHOT_FILE):
+        with open(SNAPSHOT_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {"sessions": []}
+
+
+def _save_sessions_snapshot(data):
+    os.makedirs(os.path.dirname(SNAPSHOT_FILE), exist_ok=True)
+    with open(SNAPSHOT_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False)
+
+
+def sync_incremental():
+    global _sync_call_count
+    _sync_call_count += 1
+    do_full = (_sync_call_count % 5 == 0)
+
+    stats = {"groups_updated": 0, "messages_new": 0, "errors": [],
+             "new_groups_discovered": [], "contacts_extracted": 0,
+             "full_sync": do_full}
+
+    project_keywords = []
+    for keywords, _proj in PROJECT_RULES:
+        for kw in keywords:
+            project_keywords.append(kw)
+
+    # Step 1: discover new groups
     try:
         for name, cat, sub, proj in discover_new_groups():
             stats["new_groups_discovered"].append({"name": name, "category": cat, "project": proj})
     except Exception as e:
         stats["errors"].append(f"discover_new_groups: {str(e)}")
 
-    # Step 2: find active groups from sessions JSON (all projects)
-    project_keywords = []
-    for keywords, _proj in PROJECT_RULES:
-        for kw in keywords:
-            project_keywords.append(kw)
-    active_groups = set()
-
+    # Step 2: wx sessions + snapshot comparison
+    current_positions = {}
     try:
-        sessions_json = _run_wx(["sessions", "-n", "200", "--json"])
+        sessions_json = _run_wx(["sessions", "-n", "50", "--json"])
         sessions = json.loads(sessions_json) if sessions_json else []
-        for s in sessions:
+        for idx, s in enumerate(sessions):
             if s.get("chat_type") != "group":
                 continue
             name = s.get("chat", "")
             if any(kw in name.lower() for kw in project_keywords):
                 if not any(sk in name.lower() for sk in SKIP_KEYWORDS):
-                    active_groups.add(name)
+                    current_positions[name] = idx
     except Exception as e:
         stats["errors"].append(f"sessions: {str(e)}")
 
-    # Step 3: merge with known groups that have no messages yet (never synced)
-    conn0 = get_db()
-    unsynced = set()
-    for row in conn0.execute(
-        "SELECT g.name FROM groups g LEFT JOIN messages m ON m.group_id=g.id "
-        "WHERE m.id IS NULL AND g.deleted=0"
-    ).fetchall():
-        unsynced.add(row["name"])
-    conn0.close()
+    prev_snapshot = _load_sessions_snapshot()
+    prev_positions = {s["chat"]: s["position"] for s in prev_snapshot.get("sessions", [])}
 
-    all_groups = active_groups | unsynced
+    groups_to_sync = set()
 
-    # Step 4: for each group, pull messages since last known date
-    for gname in all_groups:
+    if do_full:
+        groups_to_sync = set(current_positions.keys())
+        conn0 = get_db()
+        for row in conn0.execute(
+            "SELECT g.name FROM groups g LEFT JOIN messages m ON m.group_id=g.id "
+            "WHERE m.id IS NULL AND g.deleted=0"
+        ).fetchall():
+            groups_to_sync.add(row["name"])
+        conn0.close()
+    else:
+        for name, pos in current_positions.items():
+            prev_pos = prev_positions.get(name, 999)
+            if pos == 0 or pos < prev_pos:
+                groups_to_sync.add(name)
+
+    # Step 3: save current snapshot
+    snapshot_sessions = [{"chat": name, "position": pos}
+                         for name, pos in current_positions.items()]
+    _save_sessions_snapshot({
+        "timestamp": datetime.now().isoformat(),
+        "sessions": snapshot_sessions
+    })
+
+    # Step 4: sync selected groups
+    for gname in groups_to_sync:
         _human_delay(f"同步群: {gname}")
         try:
             conn = get_db()

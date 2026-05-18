@@ -7,7 +7,7 @@ var messagesCache = {};
 var contactsCache = {};
 
 var INTERNAL_CATS = ['内部沟通', '施工局合作', '设计院合作'];
-var EXTERNAL_CATS = ['供应商咨询', '地基处理', '建筑MEP', '保险'];
+var EXTERNAL_CATS = ['供应商咨询', '地基处理', '建筑MEP', '保险', '其他'];
 var ORDERED_CATS = INTERNAL_CATS.concat(EXTERNAL_CATS);
 
 document.addEventListener('DOMContentLoaded', function () {

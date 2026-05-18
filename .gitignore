@@ -7,6 +7,7 @@ data/*.db
 *.db-wal
 *.db-shm
 data/*.log
+data/sessions_snapshot.json
 _*.py
 _tmp_*.py
 .DS_Store
