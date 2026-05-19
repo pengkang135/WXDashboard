@@ -902,6 +902,7 @@ function loadDrawerMessages(groupId, offset) {
           var imgUrl = '/api/images/view?msg_date=' + encodeURIComponent(fileInfo.msg_date);
           if (fileInfo.timestamp) imgUrl += '&timestamp=' + encodeURIComponent(fileInfo.timestamp);
           if (fileInfo.local_id != null) imgUrl += '&local_id=' + encodeURIComponent(fileInfo.local_id);
+          if (groupId != null) imgUrl += '&group_id=' + encodeURIComponent(groupId);
           imgEl.src = imgUrl;
           imgEl.alt = '[图片]';
           imgEl.loading = 'lazy';

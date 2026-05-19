@@ -231,10 +231,11 @@ def api_open_image():
 
 @app.route("/api/images/view")
 def api_view_image():
-    """Serve a decrypted image for inline display. Uses chronological matching by local_id."""
+    """Serve a decrypted image for inline display. Uses timestamp-based matching."""
     msg_date = request.args.get("msg_date", "")
     timestamp = request.args.get("timestamp")
     local_id = request.args.get("local_id", type=int)
+    group_id = request.args.get("group_id", type=int)
     if timestamp:
         try:
             timestamp = int(timestamp)
@@ -244,7 +245,7 @@ def api_view_image():
     from .config import find_image_dat, decrypt_dat_file
     dat_files = find_image_dat(msg_date, timestamp=timestamp)
     if local_id is not None:
-        ordered = _chrono_match(msg_date, local_id)
+        ordered = _chrono_match(msg_date, local_id, group_id)
         if ordered:
             dat_files = ordered + dat_files
 
@@ -257,8 +258,8 @@ def api_view_image():
     return jsonify({"ok": False, "error": "无法解密图片"}), 404
 
 
-def _chrono_match(msg_date, local_id):
-    """Match .dat files to image messages by chronological ordering."""
+def _chrono_match(msg_date, local_id, group_id=None):
+    """Match .dat file by timestamp proximity, scoped to a specific group."""
     import json
     import os as _os
     from .config import _WX_ATTACH_ROOT
@@ -266,7 +267,29 @@ def _chrono_match(msg_date, local_id):
         return []
     yyyy_mm = msg_date[:7]
 
-    # Collect all .dat files sorted by mtime
+    target_ts = None
+    try:
+        conn = get_db()
+        if group_id:
+            row = conn.execute("""
+                SELECT raw_json FROM messages
+                WHERE group_id=? AND local_id=? AND msg_date LIKE ?
+            """, (group_id, local_id, yyyy_mm + '%')).fetchone()
+        else:
+            row = conn.execute("""
+                SELECT raw_json FROM messages
+                WHERE local_id=? AND msg_date LIKE ?
+            """, (local_id, yyyy_mm + '%')).fetchone()
+        conn.close()
+        if row:
+            raw = json.loads(row['raw_json'] or '{}')
+            target_ts = raw.get('timestamp')
+    except Exception:
+        pass
+
+    if not target_ts:
+        return []
+
     candidates = []
     try:
         for hash_dir in _os.listdir(_WX_ATTACH_ROOT):
@@ -279,37 +302,16 @@ def _chrono_match(msg_date, local_id):
                 fpath = _os.path.join(img_dir, f)
                 if '_t.dat' in f or '_h.dat' in f:
                     continue
-                candidates.append((_os.path.getmtime(fpath), fpath))
+                try:
+                    file_ts = int(f.replace('.dat', ''))
+                except ValueError:
+                    file_ts = int(_os.path.getmtime(fpath))
+                candidates.append((abs(file_ts - target_ts), fpath))
     except OSError:
         pass
+
     candidates.sort(key=lambda x: x[0])
-
-    # Get all image messages for this month ordered by msg_time
-    try:
-        conn = get_db()
-        rows = conn.execute("""
-            SELECT local_id, raw_json FROM messages
-            WHERE msg_date LIKE ? AND msg_type LIKE '%图片%'
-            ORDER BY msg_time ASC
-        """, (yyy_mm + '%',)).fetchall()
-        conn.close()
-
-        msg_list = []
-        for row in rows:
-            try:
-                raw = json.loads(row['raw_json'] or '{}')
-                ts = raw.get('timestamp', 0)
-            except Exception:
-                ts = 0
-            msg_list.append((row['local_id'], ts))
-        msg_list.sort(key=lambda x: x[1])
-
-        idx = next((i for i, m in enumerate(msg_list) if m[0] == local_id), -1)
-        if 0 <= idx < len(candidates):
-            return [candidates[idx][1]]
-    except Exception:
-        pass
-    return []
+    return [c[1] for c in candidates[:3]]
 
 
 @app.route("/api/groups/<int:group_id>/subcategory", methods=["POST"])

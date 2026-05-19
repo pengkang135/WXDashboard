@@ -108,8 +108,12 @@ def find_image_dat(msg_date, timestamp=None):
                 if '_t.dat' in f or '_h.dat' in f:
                     continue
                 if timestamp:
-                    mtime = os.path.getmtime(fpath)
-                    delta = abs(mtime - timestamp)
+                    # Prefer filename as timestamp (WeChat dat filenames are Unix timestamps)
+                    try:
+                        file_ts = int(f.replace('.dat', ''))
+                        delta = abs(file_ts - timestamp)
+                    except ValueError:
+                        delta = abs(os.path.getmtime(fpath) - timestamp)
                     results.append((delta, fpath))
                 else:
                     results.append((0, fpath))
