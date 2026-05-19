@@ -469,19 +469,24 @@ tr:hover .group-name { color: var(--accent); }
   border-bottom-color: var(--accent);
 }
 .bcc-mail-btn {
-  font-family: var(--font-ui);
-  font-size: 0.7rem;
-  padding: 2px 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 18px;
   margin-left: 4px;
   cursor: pointer;
-  background: var(--accent);
+  background: none;
   border: none;
-  border-radius: 3px;
-  color: var(--white);
-  vertical-align: middle;
-  transition: opacity 0.15s;
+  border-radius: 2px;
+  color: rgba(255,255,255,0.45);
+  vertical-align: baseline;
+  position: relative;
+  top: -1px;
+  transition: color 0.15s, background 0.15s;
 }
-.bcc-mail-btn:hover { opacity: 0.8; }
+.bcc-mail-btn:hover { color: var(--accent); background: rgba(255,255,255,0.08); }
+.bcc-mail-btn:disabled { opacity: 0.3; cursor: default; }
 .drawer-close {
   background: none;
   border: none;

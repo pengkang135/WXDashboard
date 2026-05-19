@@ -1319,13 +1319,11 @@ function handleBccMail() {
   }
   var project = currentProject;
   var btn = document.getElementById('bcc-mail-btn');
-  btn.textContent = '...';
   btn.disabled = true;
 
   fetch('/api/contacts/bcc?category=' + encodeURIComponent(category) + '&project=' + encodeURIComponent(project))
     .then(function (r) { return r.json(); })
     .then(function (contacts) {
-      btn.textContent = '群发';
       btn.disabled = false;
       if (!contacts || contacts.length === 0) {
         alert('分类 "' + category + '" 下没有可用的联系人邮箱');
@@ -1336,7 +1334,6 @@ function handleBccMail() {
       window.open(mailto, '_blank');
     })
     .catch(function () {
-      btn.textContent = '群发';
       btn.disabled = false;
       alert('获取联系人邮箱失败');
     });
