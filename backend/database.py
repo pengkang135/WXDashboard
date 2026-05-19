@@ -28,7 +28,8 @@ def init_db():
             group_creator TEXT,
             last_active_date TEXT,
             total_messages INTEGER DEFAULT 0,
-            deleted INTEGER DEFAULT 0
+            deleted INTEGER DEFAULT 0,
+            last_extraction_time TEXT
         );
     """)
     try:
@@ -37,6 +38,10 @@ def init_db():
         pass
     try:
         conn.execute("ALTER TABLE groups ADD COLUMN manual_category INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        conn.execute("ALTER TABLE groups ADD COLUMN last_extraction_time TEXT")
     except sqlite3.OperationalError:
         pass
     try:
@@ -402,10 +407,10 @@ def get_messages_for_ai_processing(group_id, date_from=None, date_to=None, max_m
     params = [group_id]
 
     if date_from:
-        clauses.append("msg_date >= ?")
+        clauses.append("msg_time >= ?")
         params.append(date_from)
     if date_to:
-        clauses.append("msg_date <= ?")
+        clauses.append("msg_time <= ?")
         params.append(date_to)
 
     where = " AND ".join(clauses)
@@ -414,6 +419,34 @@ def get_messages_for_ai_processing(group_id, date_from=None, date_to=None, max_m
         FROM messages WHERE {where}
         ORDER BY msg_time ASC LIMIT ?
     """, params + [max_messages]).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def update_extraction_time(group_id):
+    conn = get_db()
+    conn.execute(
+        "UPDATE groups SET last_extraction_time=? WHERE id=?",
+        (__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M:%S'), group_id)
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_groups_for_incremental_extraction():
+    """返回需要增量提取的群：从未提取过，或最后活跃时间晚于上次提取时间。"""
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT g.id, g.name, g.category, g.project, g.total_messages,
+               g.last_extraction_time, g.last_active_date
+        FROM groups g
+        WHERE g.deleted = 0 AND g.total_messages > 0
+          AND (g.last_extraction_time IS NULL
+               OR g.last_active_date > g.last_extraction_time)
+        ORDER BY
+            CASE WHEN g.last_extraction_time IS NULL THEN 0 ELSE 1 END,
+            g.total_messages DESC
+    """).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 

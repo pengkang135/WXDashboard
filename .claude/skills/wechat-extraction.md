@@ -107,6 +107,15 @@ result = write_extractions(group_data)
 # result: {'total': 586, 'groups_count': 39, 'by_type': {'联系人': 219, ...}}
 ```
 
+### Step 5b — 更新提取时间
+
+```python
+from backend.database import update_extraction_time
+
+for gid in group_data.keys():
+    update_extraction_time(gid)
+```
+
 ### Step 6 — 汇总
 
 输出: 覆盖群数、总记录数、各类型（联系人/工期节点/技术参数/文件引用）分布。
