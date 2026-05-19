@@ -468,6 +468,20 @@ tr:hover .group-name { color: var(--accent); }
   color: var(--accent);
   border-bottom-color: var(--accent);
 }
+.bcc-mail-btn {
+  font-family: var(--font-ui);
+  font-size: 0.7rem;
+  padding: 2px 8px;
+  margin-left: 4px;
+  cursor: pointer;
+  background: var(--accent);
+  border: none;
+  border-radius: 3px;
+  color: var(--white);
+  vertical-align: middle;
+  transition: opacity 0.15s;
+}
+.bcc-mail-btn:hover { opacity: 0.8; }
 .drawer-close {
   background: none;
   border: none;

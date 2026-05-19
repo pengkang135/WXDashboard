@@ -159,6 +159,48 @@ def api_group_contacts(group_id):
     return jsonify(contacts)
 
 
+@app.route("/api/contacts/bcc")
+def api_contacts_bcc():
+    """Get unique contacts with emails for a category, for BCC mass mail."""
+    import json
+    category = request.args.get("category", "")
+    project = request.args.get("project", "Laldia")
+    if not category:
+        return jsonify({"error": "缺少分类参数"}), 400
+
+    from .config import MY_WECHAT_NAME, MY_EMAIL_KEYWORD
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT e.content FROM ai_extractions e
+        JOIN groups g ON e.group_id = g.id
+        WHERE e.extract_type='联系人' AND g.deleted=0
+          AND g.category=? AND g.project=?
+    """, (category, project)).fetchall()
+    conn.close()
+
+    seen = set()
+    result = []
+    for r in rows:
+        try:
+            c = json.loads(r["content"])
+        except Exception:
+            continue
+        email = (c.get("邮箱") or "").strip()
+        if not email:
+            continue
+        if MY_EMAIL_KEYWORD and MY_EMAIL_KEYWORD.lower() in email.lower():
+            continue
+        name = c.get("姓名") or ""
+        if MY_WECHAT_NAME and MY_WECHAT_NAME in name:
+            continue
+        key = email.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append({"name": name, "email": email})
+    return jsonify(result)
+
+
 @app.route("/api/groups/<int:group_id>/summaries")
 def api_group_summaries(group_id):
     summaries = get_summaries(group_id)

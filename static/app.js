@@ -25,6 +25,7 @@ document.addEventListener('DOMContentLoaded', function () {
   document.getElementById('sync-modal-overlay').addEventListener('click', closeSyncModal);
   document.getElementById('search-panel-close').addEventListener('click', closeSearchPanel);
   document.getElementById('project-select').addEventListener('change', onProjectChange);
+  document.getElementById('bcc-mail-btn').addEventListener('click', handleBccMail);
 
   document.getElementById('category-filter').addEventListener('change', function () {
     currentCategoryFilter = this.value;
@@ -1307,6 +1308,37 @@ function onImageClick(msgDate, timestamp) {
     })
     .catch(function () {
       alert('打开图片失败');
+    });
+}
+
+function handleBccMail() {
+  var category = currentCategory;
+  if (category === '全部') {
+    alert('请先选择左侧分类，再对该分类下所有联系人群发邮件');
+    return;
+  }
+  var project = currentProject;
+  var btn = document.getElementById('bcc-mail-btn');
+  btn.textContent = '...';
+  btn.disabled = true;
+
+  fetch('/api/contacts/bcc?category=' + encodeURIComponent(category) + '&project=' + encodeURIComponent(project))
+    .then(function (r) { return r.json(); })
+    .then(function (contacts) {
+      btn.textContent = '群发';
+      btn.disabled = false;
+      if (!contacts || contacts.length === 0) {
+        alert('分类 "' + category + '" 下没有可用的联系人邮箱');
+        return;
+      }
+      var bcc = contacts.map(function (c) { return c.email; }).join(',');
+      var mailto = 'mailto:?bcc=' + encodeURIComponent(bcc);
+      window.open(mailto, '_blank');
+    })
+    .catch(function () {
+      btn.textContent = '群发';
+      btn.disabled = false;
+      alert('获取联系人邮箱失败');
     });
 }
 

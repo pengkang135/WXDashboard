@@ -495,3 +495,7 @@ SYNC_DELAY_MIN = float(_os2.environ.get("WX_SYNC_DELAY_MIN", "0.5"))
 SYNC_DELAY_MAX = float(_os2.environ.get("WX_SYNC_DELAY_MAX", "2.0"))
 SYNC_BATCH_LIMIT = int(_os2.environ.get("WX_SYNC_BATCH_LIMIT", "200"))
 WX_MIN_INTERVAL = float(_os2.environ.get("WX_MIN_INTERVAL", "1.5"))
+
+# 本人微信名/邮箱关键词，提取时跳过自己的联系信息
+MY_WECHAT_NAME = _os2.environ.get("MY_WECHAT_NAME", "彭康")
+MY_EMAIL_KEYWORD = _os2.environ.get("MY_EMAIL_KEYWORD", "pengkang")
