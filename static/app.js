@@ -15,6 +15,7 @@ document.addEventListener('DOMContentLoaded', function () {
   loadProjects();
   loadAll();
   document.getElementById('refresh-btn').addEventListener('click', onRefresh);
+  document.getElementById('refresh-btn').addEventListener('dblclick', onManualSync);
   document.getElementById('export-btn').addEventListener('click', onExport);
   document.getElementById('search-input').addEventListener('keydown', function (e) {
     if (e.key === 'Enter') onSearch();
@@ -86,16 +87,22 @@ function loadAll() {
     .then(function (cats) { renderTabs(cats); })
     .catch(function (e) { console.error(e); });
 
-  fetch('/api/groups?project=' + encodeURIComponent(currentProject))
+  fetch('/api/groups?project=' + encodeURIComponent(currentProject) + '&with_details=1')
     .then(function (r) { return r.json(); })
     .then(function (groups) {
       groupsData = groups;
+      groups.forEach(function (g) {
+        messagesCache[g.id] = g.latest_messages || [];
+        contactsCache[g.id] = g.contacts || [];
+      });
       updateCreatorFilter(groups);
       updateCategoryFilterOptions();
       renderTable(groups);
       updateMeta(groups);
-      loadAllLatestMessages(groups);
-      loadAllContacts(groups);
+      groups.forEach(function (g) {
+        renderMessagesCell(g.id, messagesCache[g.id]);
+        renderContactsCell(g.id, contactsCache[g.id]);
+      });
     })
     .catch(function (e) { console.error(e); });
 }
@@ -994,7 +1001,52 @@ function onExport() {
     });
 }
 
+var _toastTimer = null;
+
+function showToast(msg, hasNew) {
+  var el = document.getElementById('toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'toast';
+    el.className = 'toast';
+    document.body.appendChild(el);
+  }
+  if (_toastTimer) clearTimeout(_toastTimer);
+  el.classList.remove('show');
+  void el.offsetWidth;
+  el.textContent = msg;
+  if (hasNew) {
+    el.classList.remove('toast-nonew');
+  } else {
+    el.classList.add('toast-nonew');
+  }
+  el.classList.add('show');
+  _toastTimer = setTimeout(function () {
+    el.classList.remove('show');
+  }, 2000);
+}
+
 function onRefresh() {
+  var prevGroupCount = groupsData.length;
+  var prevMsgTotal = 0;
+  groupsData.forEach(function (g) { prevMsgTotal += (parseInt(g.message_count) || 0); });
+
+  refreshCurrentView(function () {
+    var groupCount = groupsData.length;
+    var msgTotal = 0;
+    groupsData.forEach(function (g) { msgTotal += (parseInt(g.message_count) || 0); });
+    var diff = msgTotal - prevMsgTotal;
+    if (diff > 0) {
+      showToast('刷新完成 · ' + groupCount + ' 个群 · +' + diff + ' 条新消息', true);
+    } else if (msgTotal > 0) {
+      showToast('已刷新 ' + groupCount + ' 个群 · 共 ' + msgTotal + ' 条 · 无新增', false);
+    } else {
+      showToast('已刷新 · 暂无消息', false);
+    }
+  });
+}
+
+function onManualSync() {
   var modal = document.getElementById('sync-modal');
   var overlay = document.getElementById('sync-modal-overlay');
   var progress = document.getElementById('sync-progress');
@@ -1066,7 +1118,7 @@ function onRefresh() {
                   statusText.textContent = parts.join(', ');
                 }
                 closeBtn.style.display = '';
-                if (window._onSyncComplete) window._onSyncComplete();
+                refreshCurrentView();
               }
             });
         }, 1000);
@@ -1104,7 +1156,7 @@ function onRefresh() {
                       statusText.textContent = '同步完成: ' + (data.messages_new || 0) + ' 条新消息';
                     }
                     closeBtn.style.display = '';
-                    if (window._onSyncComplete) window._onSyncComplete();
+                    refreshCurrentView();
                   }
                 });
             }, 1000);
@@ -1220,18 +1272,18 @@ function getActivityClass(dateStr) {
   return 'row-old';
 }
 
-function doAutoSync() {
-  fetch('/api/sync/refresh', { method: 'POST' }).catch(function () {});
-}
-
-function refreshCurrentView() {
+function refreshCurrentView(onComplete) {
   messagesCache = {};
   contactsCache = {};
 
-  fetch('/api/groups?project=' + encodeURIComponent(currentProject))
+  fetch('/api/groups?project=' + encodeURIComponent(currentProject) + '&with_details=1')
     .then(function (r) { return r.json(); })
     .then(function (groups) {
       groupsData = groups;
+      groups.forEach(function (g) {
+        messagesCache[g.id] = g.latest_messages || [];
+        contactsCache[g.id] = g.contacts || [];
+      });
       updateCreatorFilter(groups);
       var filtered = groupsData;
       if (currentCategory !== '全部') {
@@ -1250,9 +1302,10 @@ function refreshCurrentView() {
       renderTable(filtered);
       updateMeta(filtered);
       filtered.forEach(function (g) {
-        loadAllLatestMessages([g]);
-        loadAllContacts([g]);
+        renderMessagesCell(g.id, messagesCache[g.id]);
+        renderContactsCell(g.id, contactsCache[g.id]);
       });
+      if (onComplete) onComplete();
     })
     .catch(function (e) { console.error(e); });
 }

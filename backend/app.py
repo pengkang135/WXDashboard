@@ -53,9 +53,8 @@ def api_groups():
     category = request.args.get("category")
     project = request.args.get("project", "Laldia")
     group_creator = request.args.get("group_creator")
-    groups = get_all_groups(category=category, project=project, group_creator=group_creator)
-    for g in groups:
-        g["message_count"] = get_message_count(g["id"])
+    with_details = request.args.get("with_details", "0") == "1"
+    groups = get_all_groups(category=category, project=project, group_creator=group_creator, with_details=with_details)
     return jsonify(groups)
 
 

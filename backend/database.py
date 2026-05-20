@@ -48,6 +48,10 @@ def init_db():
         conn.execute("ALTER TABLE groups ADD COLUMN project TEXT DEFAULT 'Laldia'")
     except sqlite3.OperationalError:
         pass
+    try:
+        conn.execute("ALTER TABLE messages ADD COLUMN extracted INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -65,8 +69,7 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_msg_group_time ON messages(group_id, msg_time DESC);
 
         CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
-            group_name, sender, content,
-            content=messages, content_rowid=id
+            group_name, sender, content
         );
 
         CREATE TRIGGER IF NOT EXISTS messages_ai AFTER INSERT ON messages BEGIN
@@ -77,13 +80,11 @@ def init_db():
         END;
 
         CREATE TRIGGER IF NOT EXISTS messages_ad AFTER DELETE ON messages BEGIN
-            INSERT INTO messages_fts(messages_fts, rowid, group_name, sender, content)
-            VALUES('delete', old.id, old.sender, old.content, old.content);
+            DELETE FROM messages_fts WHERE rowid = old.id;
         END;
 
         CREATE TRIGGER IF NOT EXISTS messages_au AFTER UPDATE ON messages BEGIN
-            INSERT INTO messages_fts(messages_fts, rowid, group_name, sender, content)
-            VALUES('delete', old.id, old.sender, old.content, old.content);
+            DELETE FROM messages_fts WHERE rowid = old.id;
             INSERT INTO messages_fts(rowid, group_name, sender, content)
             VALUES (new.id,
                 (SELECT name FROM groups WHERE id = new.group_id),
@@ -118,23 +119,66 @@ def init_db():
     conn.close()
 
 
-def get_all_groups(category=None, project=None, group_creator=None):
+def get_all_groups(category=None, project=None, group_creator=None, with_details=False):
     conn = get_db()
-    clauses = ["deleted=0"]
+    clauses = ["g.deleted=0"]
     params = []
     if category:
-        clauses.append("category=?")
+        clauses.append("g.category=?")
         params.append(category)
     if project:
-        clauses.append("project=?")
+        clauses.append("g.project=?")
         params.append(project)
     if group_creator:
-        clauses.append("group_creator=?")
+        clauses.append("g.group_creator=?")
         params.append(group_creator)
-    sql = f"SELECT * FROM groups WHERE {' AND '.join(clauses)} ORDER BY last_active_date DESC, id DESC"
+    where = " AND ".join(clauses)
+    sql = f"""
+        SELECT g.*, COALESCE(mc.cnt, 0) as message_count
+        FROM groups g
+        LEFT JOIN (
+            SELECT group_id, COUNT(*) as cnt FROM messages GROUP BY group_id
+        ) mc ON mc.group_id = g.id
+        WHERE {where}
+        ORDER BY g.last_active_date DESC, g.id DESC
+    """
     rows = conn.execute(sql, params).fetchall()
+    groups = [dict(r) for r in rows]
+
+    if with_details and groups:
+        group_ids = [g["id"] for g in groups]
+        placeholders = ",".join("?" for _ in group_ids)
+        # 批量获取每个群最近3条非系统消息
+        latest = conn.execute(f"""
+            SELECT group_id, sender, content, msg_time, msg_date, msg_type, raw_json
+            FROM (
+                SELECT *, ROW_NUMBER() OVER (
+                    PARTITION BY group_id ORDER BY msg_time DESC
+                ) as rn
+                FROM messages
+                WHERE group_id IN ({placeholders}) AND msg_type != '系统'
+            ) WHERE rn <= 3
+        """, group_ids).fetchall()
+        latest_by_group = {}
+        for r in latest:
+            latest_by_group.setdefault(r["group_id"], []).append(dict(r))
+        for g in groups:
+            g["latest_messages"] = latest_by_group.get(g["id"], [])
+
+        # 批量获取所有联系人
+        contacts = conn.execute(f"""
+            SELECT * FROM contacts
+            WHERE group_id IN ({placeholders})
+            ORDER BY group_id, id
+        """, group_ids).fetchall()
+        contacts_by_group = {}
+        for r in contacts:
+            contacts_by_group.setdefault(r["group_id"], []).append(dict(r))
+        for g in groups:
+            g["contacts"] = contacts_by_group.get(g["id"], [])
+
     conn.close()
-    return [dict(r) for r in rows]
+    return groups
 
 
 def get_group(group_id):
@@ -400,12 +444,14 @@ def get_extractions(group_id):
     return [dict(r) for r in rows]
 
 
-def get_messages_for_ai_processing(group_id, date_from=None, date_to=None, max_messages=200):
+def get_messages_for_ai_processing(group_id, date_from=None, date_to=None, max_messages=200, unextracted_only=False):
     """AI处理用消息读取。按时间正序分页，排除系统消息。供分类/摘要/提取技能从SQLite读取，替代wx-cli调用。"""
     conn = get_db()
     clauses = ["group_id=?", "msg_type != '系统'"]
     params = [group_id]
 
+    if unextracted_only:
+        clauses.append("extracted=0")
     if date_from:
         clauses.append("msg_time >= ?")
         params.append(date_from)
@@ -423,6 +469,40 @@ def get_messages_for_ai_processing(group_id, date_from=None, date_to=None, max_m
     return [dict(r) for r in rows]
 
 
+def mark_messages_extracted(group_id, message_ids=None, up_to_id=None):
+    """标记消息为已提取。可指定消息ID列表或上限ID（标记该群该ID及之前所有消息）。"""
+    conn = get_db()
+    if message_ids:
+        placeholders = ",".join("?" for _ in message_ids)
+        conn.execute(f"""
+            UPDATE messages SET extracted=1 WHERE group_id=? AND id IN ({placeholders})
+        """, [group_id] + message_ids)
+    elif up_to_id:
+        # 逐条更新避免 FTS 触发器在范围更新时出错
+        rows = conn.execute(
+            "SELECT id FROM messages WHERE group_id=? AND id <= ? AND extracted=0",
+            (group_id, up_to_id)
+        ).fetchall()
+        ids = [r["id"] for r in rows]
+        if ids:
+            placeholders = ",".join("?" for _ in ids)
+            conn.execute(f"""
+                UPDATE messages SET extracted=1 WHERE id IN ({placeholders})
+            """, ids)
+    conn.commit()
+    conn.close()
+
+
+def get_unextracted_message_count(group_id):
+    conn = get_db()
+    row = conn.execute(
+        "SELECT COUNT(*) as cnt FROM messages WHERE group_id=? AND extracted=0 AND msg_type != '系统'",
+        (group_id,)
+    ).fetchone()
+    conn.close()
+    return row["cnt"]
+
+
 def update_extraction_time(group_id):
     conn = get_db()
     conn.execute(
@@ -434,15 +514,20 @@ def update_extraction_time(group_id):
 
 
 def get_groups_for_incremental_extraction():
-    """返回需要增量提取的群：从未提取过，或最后活跃时间晚于上次提取时间。"""
+    """返回需要增量提取的群：该群存在未提取的消息。"""
     conn = get_db()
     rows = conn.execute("""
         SELECT g.id, g.name, g.category, g.project, g.total_messages,
-               g.last_extraction_time, g.last_active_date
+               g.last_extraction_time, g.last_active_date,
+               COALESCE(ue.cnt, 0) as unextracted_count
         FROM groups g
-        WHERE g.deleted = 0 AND g.total_messages > 0
-          AND (g.last_extraction_time IS NULL
-               OR g.last_active_date > g.last_extraction_time)
+        LEFT JOIN (
+            SELECT group_id, COUNT(*) as cnt
+            FROM messages
+            WHERE extracted=0 AND msg_type != '系统'
+            GROUP BY group_id
+        ) ue ON ue.group_id = g.id
+        WHERE g.deleted = 0 AND ue.cnt > 0
         ORDER BY
             CASE WHEN g.last_extraction_time IS NULL THEN 0 ELSE 1 END,
             g.total_messages DESC
