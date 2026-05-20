@@ -24,21 +24,39 @@ def check_port(port):
     needle = f":{port}"
     for line in result.stdout.splitlines():
         if needle in line and "LISTENING" in line:
-            return True
-    return False
+            parts = line.split()
+            if len(parts) >= 5:
+                return True, parts[4]
+            return True, None
+    return False, None
+
+
+def kill_old_process(port):
+    """Kill existing process on port, matching start_ledger.bat behavior."""
+    listening, pid = check_port(port)
+    if not listening:
+        return
+    print(f"Found existing process on port {port} (PID: {pid}), killing...")
+    subprocess.run(["taskkill", "/PID", pid, "/T", "/F"],
+                   capture_output=True)
+    for _ in range(5):
+        time.sleep(1)
+        listening, _ = check_port(port)
+        if not listening:
+            print("Old process terminated")
+            return
+    print("Warning: port still in use after kill attempt")
 
 
 def wait_port(port, timeout=10):
     for _ in range(timeout):
         time.sleep(1)
-        if check_port(port):
+        if check_port(port)[0]:
             return True
     return False
 
 
-if check_port(FLASK_PORT):
-    print(f"WXDashboard already running on port {FLASK_PORT}")
-    sys.exit(1)
+kill_old_process(FLASK_PORT)
 
 if not os.path.exists(PYTHON_EXE):
     print(f"venv not found at {PYTHON_EXE}")
