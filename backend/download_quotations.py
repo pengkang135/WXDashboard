@@ -145,17 +145,18 @@ def _xlsx_has_price(file_path):
     try:
         import openpyxl
         wb = openpyxl.load_workbook(file_path, read_only=True, data_only=True)
-        for sheet_name in wb.sheetnames:
-            ws = wb[sheet_name]
-            for row in ws.iter_rows(max_row=50, values_only=True):
-                row_text = " ".join(str(c) for c in row if c is not None)
-                row_lower = row_text.lower()
-                if any(kw in row_lower for kw in PRICE_KEYWORDS):
-                    wb.close()
-                    return True
-        wb.close()
-    except Exception:
-        pass
+        try:
+            for sheet_name in wb.sheetnames:
+                ws = wb[sheet_name]
+                for row in ws.iter_rows(max_row=50, values_only=True):
+                    row_text = " ".join(str(c) for c in row if c is not None)
+                    row_lower = row_text.lower()
+                    if any(kw in row_lower for kw in PRICE_KEYWORDS):
+                        return True
+        finally:
+            wb.close()
+    except Exception as e:
+        print(f"  [WARN] xlsx parse failed: {e}")
     return False
 
 
@@ -171,10 +172,10 @@ def _pdf_has_price(file_path):
         text_lower = text.lower()
         if any(kw in text_lower for kw in PRICE_KEYWORDS):
             return True
-        if re.search(r'[\$\€\¥\£]', text):
+        if re.search(r'[$€¥£]', text):
             return True
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"  [WARN] pdf parse failed: {e}")
     return False
 
 
