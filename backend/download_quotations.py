@@ -127,6 +127,11 @@ def extract_company_from_group(group_name):
     if len(parts) >= 3:
         return parts[-1].strip()
 
+    # Pattern 3: XXX&YYY -> YYY (e.g. 港湾&中怡保险 -> 中怡保险)
+    m = re.search(r'&(.+?)$', group_name)
+    if m:
+        return m.group(1).strip()
+
     return group_name
 
 
@@ -283,3 +288,11 @@ def _print_tree(root, prefix=""):
         if os.path.isdir(path):
             print(f"{prefix}{marker}{name}/")
             _print_tree(path, prefix + ("    " if is_last else "│   "))
+
+
+if __name__ == "__main__":
+    import sys
+    sys.stdout.reconfigure(encoding='utf-8')
+    days = int(sys.argv[1]) if len(sys.argv) > 1 else 7
+    print(f"扫描最近 {days} 天的报价文件...\n")
+    download_quotations(days=days)
