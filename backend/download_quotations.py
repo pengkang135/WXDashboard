@@ -1,4 +1,5 @@
 import html
+import os
 import re
 import shutil
 from datetime import datetime, timedelta
@@ -108,3 +109,87 @@ def collect_file_messages(conn, days=7):
             "ext": ext_match.group(1).lower(),
         })
     return results
+
+
+def extract_company_from_group(group_name):
+    """Extract supplier/company name from group name.
+    'Laldia-CHEC&裕大管桩' -> '裕大管桩'
+    '孟加拉Laldia项目-港湾-中岩大地' -> '中岩大地'
+    'Laldia-MEP-CHEC&Inspur浪潮' -> 'Inspur_浪潮'
+    """
+    # Pattern 1: CHEC&XXX or CHEC&XXX中文
+    m = re.search(r'CHEC&(.+?)$', group_name)
+    if m:
+        return m.group(1).strip()
+
+    # Pattern 2: 项目-港湾-XXX or 项目-单位-XXX
+    parts = group_name.split("-")
+    if len(parts) >= 3:
+        return parts[-1].strip()
+
+    return group_name
+
+
+def build_dir_name(sub_category, company):
+    """Build bilingual directory name.
+    sub_category='钢管桩', company='裕大管桩' -> '钢管桩_SteelPipePile/裕大管桩'
+    """
+    en = SUB_CATEGORY_EN.get(sub_category, sub_category)
+    cat_dir = f"{sub_category}_{en}" if sub_category else f"未分类_Unclassified"
+    company_dir = company.replace("/", "_").replace("\\", "_").strip()
+    return os.path.join(cat_dir, company_dir)
+
+
+def _xlsx_has_price(file_path):
+    """Check if xlsx file contains price information."""
+    try:
+        import openpyxl
+        wb = openpyxl.load_workbook(file_path, read_only=True, data_only=True)
+        for sheet_name in wb.sheetnames:
+            ws = wb[sheet_name]
+            for row in ws.iter_rows(max_row=50, values_only=True):
+                row_text = " ".join(str(c) for c in row if c is not None)
+                row_lower = row_text.lower()
+                if any(kw in row_lower for kw in PRICE_KEYWORDS):
+                    wb.close()
+                    return True
+        wb.close()
+    except Exception:
+        pass
+    return False
+
+
+def _pdf_has_price(file_path):
+    """Check if PDF file contains price information."""
+    try:
+        import pdfplumber
+        with pdfplumber.open(file_path) as pdf:
+            pages_to_check = pdf.pages[:3]
+            text = "\n".join(
+                page.extract_text() or "" for page in pages_to_check
+            )
+        text_lower = text.lower()
+        if any(kw in text_lower for kw in PRICE_KEYWORDS):
+            return True
+        if re.search(r'[\$\€\¥\£]', text):
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def is_price_document(file_path, ext):
+    """Check if file is a quotation document."""
+    if ext == "xlsx":
+        return _xlsx_has_price(file_path)
+    elif ext == "pdf":
+        return _pdf_has_price(file_path)
+    return False
+
+
+def is_brochure(file_path, ext, filename):
+    """Check if file appears to be a company brochure."""
+    name_lower = filename.lower()
+    if any(kw in name_lower for kw in BROCHURE_KEYWORDS):
+        return True
+    return False
