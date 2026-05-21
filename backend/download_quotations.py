@@ -194,3 +194,92 @@ def is_brochure(file_path, ext, filename):
     if any(kw in name_lower for kw in BROCHURE_KEYWORDS):
         return True
     return False
+
+
+def download_quotations(days=7):
+    """Main entry point. Scan recent supplier messages, validate, copy files.
+    Returns dict with stats: scanned, downloaded, skipped, errors.
+    """
+    conn = get_db()
+    candidates = collect_file_messages(conn, days=days)
+    conn.close()
+
+    stats = {"scanned": len(candidates), "downloaded": 0, "skipped": 0, "errors": []}
+    downloaded_files = []
+
+    for item in candidates:
+        file_path = get_wx_file_path(item["msg_date"], item["filename"])
+        if not file_path:
+            stats["skipped"] += 1
+            print(f"[SKIP] 文件不存在: {item['filename']}")
+            continue
+
+        ext = item["ext"]
+
+        # Determine if price document or brochure
+        is_price = is_price_document(file_path, ext)
+        is_brochure_doc = is_brochure(file_path, ext, item["filename"])
+
+        if not is_price and not is_brochure_doc:
+            stats["skipped"] += 1
+            print(f"[SKIP] 非报价文件: {item['filename']} ({item['sender']} @ {item['group_name']})")
+            continue
+
+        doc_type = "报价" if is_price else "介绍"
+        if is_brochure_doc and not is_price:
+            doc_type = "公司介绍"
+
+        # Build destination paths
+        company = extract_company_from_group(item["group_name"])
+        sub_dir = build_dir_name(item["sub_category"], company)
+        dest_dir = os.path.join(DOWNLOAD_ROOT, sub_dir)
+        os.makedirs(dest_dir, exist_ok=True)
+        dest_path = os.path.join(dest_dir, item["filename"])
+
+        try:
+            shutil.copy2(file_path, dest_path)
+            stats["downloaded"] += 1
+            downloaded_files.append({
+                "filename": item["filename"],
+                "sender": item["sender"],
+                "group": item["group_name"],
+                "company": company,
+                "sub_category": item["sub_category"],
+                "type": doc_type,
+                "dest": dest_path,
+            })
+            print(f"[{doc_type}] {item['filename']}")
+            print(f"  {item['sender']} @ {item['group_name']}")
+            print(f"  -> {dest_path}")
+        except Exception as e:
+            stats["errors"].append({"file": item["filename"], "error": str(e)})
+            print(f"[ERROR] {item['filename']}: {e}")
+
+    # Print summary
+    print(f"\n=== 下载完成 ===")
+    print(f"扫描: {stats['scanned']} 个文件")
+    print(f"下载: {stats['downloaded']} 个文件")
+    print(f"跳过: {stats['skipped']} 个")
+    if stats["errors"]:
+        print(f"错误: {len(stats['errors'])} 个")
+        for e in stats["errors"]:
+            print(f"  - {e['file']}: {e['error']}")
+
+    print(f"\n目标目录: {DOWNLOAD_ROOT}")
+    _print_tree(DOWNLOAD_ROOT)
+
+    return stats
+
+
+def _print_tree(root, prefix=""):
+    """Print a simple directory tree."""
+    if not os.path.isdir(root):
+        return
+    entries = sorted(os.listdir(root))
+    for i, name in enumerate(entries):
+        path = os.path.join(root, name)
+        is_last = i == len(entries) - 1
+        marker = "└── " if is_last else "├── "
+        if os.path.isdir(path):
+            print(f"{prefix}{marker}{name}/")
+            _print_tree(path, prefix + ("    " if is_last else "│   "))
