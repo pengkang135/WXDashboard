@@ -6,6 +6,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 WXDashboard — 微信工作群消息管理系统。对所有工作微信群聊记录进行归档、检索与信息筛选管理。通过 `wx-cli` (npm) 读取本地微信数据库,经 `sync_engine.py` 解析写入 SQLite + FTS5 全文索引,Flask 提供 Web 仪表盘进行浏览和搜索。
 
+---
+
+## WX-CLI 绝对禁止令 — 已两次被微信踢下线
+
+**WX-CLI 是雷区。** 以下规则不容商量，违反即下线：
+
+1. **唯一调用者**: 只有 `backend/sync_engine.py` 可以调用 wx-cli。其他任何代码、脚本、Agent、子进程一律禁止。
+2. **AI 绝对禁止**: Claude Code 主会话及任何子 Agent 均不得以任何形式调用 wx-cli（Bash、Python subprocess、MCP shell 等所有渠道）。
+3. **数据唯一起源**: AI 读取的消息数据必须来自 SQLite（`data/ledger_v2.db`），不得绕过。
+4. **禁止子 Agent**: 本项目不使用 Agent/子 Agent 执行任务。所有操作由主会话顺序执行。
+5. **自动阻断已部署**: PreToolUse hook (`block-wx-cli.py`) 会在任何 Bash 命令含 wx 模式时硬性阻断。
+
+**违反一次都不行。没有例外。**
+
+---
+
 # 行为准则
 
 1. **Ask, don't assume:** If requirements are ambiguous, list the tradeoffs or options and ask for clarification before writing a single line of code.
