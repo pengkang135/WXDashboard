@@ -1,5 +1,6 @@
 import re
 from .database import get_db
+from .config import MY_WECHAT_NAME
 
 EMAIL_RE = re.compile(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}')
 PHONE_RE = re.compile(r'1[3-9]\d{9}')
@@ -46,6 +47,8 @@ def extract_from_message(group_id, message_id, sender, content):
 
 
 def extract_and_save(conn, group_id, message_id, sender, content):
+    if sender == MY_WECHAT_NAME:
+        return 0
     contacts = extract_from_message(group_id, message_id, sender, content)
     for c in contacts:
         existing = conn.execute(

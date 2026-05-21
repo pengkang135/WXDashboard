@@ -1,6 +1,6 @@
 import sqlite3
 import os
-from .config import DB_PATH, DATA_DIR
+from .config import DB_PATH, DATA_DIR, MY_WECHAT_NAME, MY_EMAIL_KEYWORD
 
 
 def get_db():
@@ -169,8 +169,10 @@ def get_all_groups(category=None, project=None, group_creator=None, with_details
         contacts = conn.execute(f"""
             SELECT * FROM contacts
             WHERE group_id IN ({placeholders})
+              AND sender_name IS NOT ?
+              AND (email IS NULL OR email NOT LIKE ?)
             ORDER BY group_id, id
-        """, group_ids).fetchall()
+        """, (*group_ids, MY_WECHAT_NAME, "%" + MY_EMAIL_KEYWORD + "%")).fetchall()
         contacts_by_group = {}
         for r in contacts:
             contacts_by_group.setdefault(r["group_id"], []).append(dict(r))
@@ -388,10 +390,14 @@ def get_contacts(group_id=None):
     conn = get_db()
     if group_id:
         rows = conn.execute(
-            "SELECT * FROM contacts WHERE group_id=? ORDER BY id", (group_id,)
+            "SELECT * FROM contacts WHERE group_id=? AND sender_name IS NOT ? AND (email IS NULL OR email NOT LIKE ?) ORDER BY id",
+            (group_id, MY_WECHAT_NAME, "%" + MY_EMAIL_KEYWORD + "%")
         ).fetchall()
     else:
-        rows = conn.execute("SELECT * FROM contacts ORDER BY group_id, id").fetchall()
+        rows = conn.execute(
+            "SELECT * FROM contacts WHERE sender_name IS NOT ? AND (email IS NULL OR email NOT LIKE ?) ORDER BY group_id, id",
+            (MY_WECHAT_NAME, "%" + MY_EMAIL_KEYWORD + "%")
+        ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 

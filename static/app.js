@@ -15,15 +15,12 @@ document.addEventListener('DOMContentLoaded', function () {
   loadProjects();
   loadAll();
   document.getElementById('refresh-btn').addEventListener('click', onRefresh);
-  document.getElementById('refresh-btn').addEventListener('dblclick', onManualSync);
   document.getElementById('export-btn').addEventListener('click', onExport);
   document.getElementById('search-input').addEventListener('keydown', function (e) {
     if (e.key === 'Enter') onSearch();
   });
   document.getElementById('drawer-close').addEventListener('click', closeDrawer);
   document.getElementById('drawer-overlay').addEventListener('click', closeDrawer);
-  document.getElementById('sync-modal-close').addEventListener('click', closeSyncModal);
-  document.getElementById('sync-modal-overlay').addEventListener('click', closeSyncModal);
   document.getElementById('search-panel-close').addEventListener('click', closeSearchPanel);
   document.getElementById('project-select').addEventListener('change', onProjectChange);
   document.getElementById('bcc-mail-btn').addEventListener('click', handleBccMail);
@@ -1027,159 +1024,47 @@ function showToast(msg, hasNew) {
 }
 
 function onRefresh() {
+  var btn = document.getElementById('refresh-btn');
+  if (btn.disabled) return;
+  btn.disabled = true;
+
   var prevGroupCount = groupsData.length;
   var prevMsgTotal = 0;
   groupsData.forEach(function (g) { prevMsgTotal += (parseInt(g.message_count) || 0); });
 
-  refreshCurrentView(function () {
-    var groupCount = groupsData.length;
-    var msgTotal = 0;
-    groupsData.forEach(function (g) { msgTotal += (parseInt(g.message_count) || 0); });
-    var diff = msgTotal - prevMsgTotal;
-    if (diff > 0) {
-      showToast('刷新完成 · ' + groupCount + ' 个群 · +' + diff + ' 条新消息', true);
-    } else if (msgTotal > 0) {
-      showToast('已刷新 ' + groupCount + ' 个群 · 共 ' + msgTotal + ' 条 · 无新增', false);
-    } else {
-      showToast('已刷新 · 暂无消息', false);
-    }
-  });
-}
-
-function onManualSync() {
-  var modal = document.getElementById('sync-modal');
-  var overlay = document.getElementById('sync-modal-overlay');
-  var progress = document.getElementById('sync-progress');
-  var statusText = document.getElementById('sync-status-text');
-  var closeBtn = document.getElementById('sync-modal-close');
-
-  modal.classList.add('show');
-  overlay.classList.add('show');
-  closeBtn.style.display = 'none';
-  progress.style.width = '20%';
-  progress.style.background = '#c47e3b';
-  statusText.textContent = '正在发现新群组...';
-
-  fetch('/api/sync/discover', { method: 'POST' })
+  fetch('/api/sync/refresh', { method: 'POST' })
     .then(function (r) { return r.json(); })
-    .then(function (discData) {
-      progress.style.width = '40%';
-      if (discData.new_groups && discData.new_groups.length > 0) {
-        statusText.textContent = '发现 ' + discData.new_groups.length + ' 个新群组，正在拉取消息...';
-      } else {
-        statusText.textContent = '正在调用 wx-cli 拉取最新消息...';
-      }
-
-      fetch('/api/sync/refresh', { method: 'POST' })
-        .then(function (r) { return r.json(); })
-        .then(function (initData) {
-          if (initData.status === 'running') {
-            statusText.textContent = '同步已在执行中，等待完成...';
-            pollSyncStatus();
-            return;
-          }
-          statusText.textContent = '正在调用 wx-cli 拉取最新消息...';
-          progress.style.width = '50%';
-          pollSyncStatus();
-        })
-        .catch(function (e) {
-          progress.style.width = '100%';
-          progress.style.background = '#b84c4c';
-          statusText.textContent = '请求失败: ' + e.message;
-          closeBtn.style.display = '';
-        });
-
-      function pollSyncStatus() {
-        var attempts = 0;
-        var timer = setInterval(function () {
-          attempts++;
-          var pct = Math.min(40 + attempts * 3, 90);
-          progress.style.width = pct + '%';
-          fetch('/api/sync/refresh/status')
-            .then(function (r) { return r.json(); })
-            .then(function (s) {
-              if (!s.running) {
-                clearInterval(timer);
-                progress.style.width = '100%';
-                var data = s.result;
-                if (!data) {
-                  statusText.textContent = '同步完成';
-                  progress.style.background = '#4a7c59';
-                } else if (data.error) {
-                  progress.style.background = '#b84c4c';
-                  statusText.textContent = data.error;
+    .then(function () {
+      function poll() {
+        fetch('/api/sync/refresh/status')
+          .then(function (r) { return r.json(); })
+          .then(function (s) {
+            if (!s.running) {
+              refreshCurrentView(function () {
+                btn.disabled = false;
+                var groupCount = groupsData.length;
+                var msgTotal = 0;
+                groupsData.forEach(function (g) { msgTotal += (parseInt(g.message_count) || 0); });
+                var diff = msgTotal - prevMsgTotal;
+                if (diff > 0) {
+                  showToast('刷新完成 · ' + groupCount + ' 个群 · +' + diff + ' 条新消息', true);
+                } else if (msgTotal > 0) {
+                  showToast('已刷新 ' + groupCount + ' 个群 · 共 ' + msgTotal + ' 条 · 无新增', false);
                 } else {
-                  progress.style.background = '#4a7c59';
-                  var parts = ['同步完成: 拉取 ' + (data.messages_new || 0) + ' 条新消息'];
-                  if (data.new_groups_discovered && data.new_groups_discovered.length > 0) {
-                    parts.push('发现 ' + data.new_groups_discovered.length + ' 个新群');
-                  }
-                  parts.push((data.groups_updated || 0) + ' 个群已更新');
-                  statusText.textContent = parts.join(', ');
+                  showToast('已刷新 · 暂无消息', false);
                 }
-                closeBtn.style.display = '';
-                refreshCurrentView();
-              }
-            });
-        }, 1000);
+              });
+            } else {
+              setTimeout(poll, 500);
+            }
+          });
       }
+      setTimeout(poll, 300);
     })
-    .catch(function (e) {
-      progress.style.width = '40%';
-      fetch('/api/sync/refresh', { method: 'POST' })
-        .then(function (r) { return r.json(); })
-        .then(function (initData) {
-          statusText.textContent = '正在调用 wx-cli 拉取最新消息...';
-          progress.style.width = '50%';
-          pollSyncStatus2();
-          function pollSyncStatus2() {
-            var attempts = 0;
-            var timer = setInterval(function () {
-              attempts++;
-              var pct = Math.min(40 + attempts * 3, 90);
-              progress.style.width = pct + '%';
-              fetch('/api/sync/refresh/status')
-                .then(function (r) { return r.json(); })
-                .then(function (s) {
-                  if (!s.running) {
-                    clearInterval(timer);
-                    progress.style.width = '100%';
-                    var data = s.result;
-                    if (!data) {
-                      statusText.textContent = '同步完成';
-                      progress.style.background = '#4a7c59';
-                    } else if (data.error) {
-                      progress.style.background = '#b84c4c';
-                      statusText.textContent = data.error;
-                    } else {
-                      progress.style.background = '#4a7c59';
-                      statusText.textContent = '同步完成: ' + (data.messages_new || 0) + ' 条新消息';
-                    }
-                    closeBtn.style.display = '';
-                    refreshCurrentView();
-                  }
-                });
-            }, 1000);
-          }
-        })
-        .catch(function (e2) {
-          progress.style.width = '100%';
-          progress.style.background = '#b84c4c';
-          statusText.textContent = '请求失败: ' + e2.message;
-          closeBtn.style.display = '';
-        });
+    .catch(function () {
+      btn.disabled = false;
+      showToast('同步请求失败', false);
     });
-}
-
-function closeSyncModal() {
-  var modal = document.getElementById('sync-modal');
-  var overlay = document.getElementById('sync-modal-overlay');
-  var progress = document.getElementById('sync-progress');
-  modal.classList.remove('show');
-  overlay.classList.remove('show');
-  progress.style.width = '0%';
-  progress.style.background = '#c47e3b';
-  loadAll();
 }
 
 function onSearch() {
@@ -1382,7 +1267,10 @@ function handleBccMail() {
         alert('分类 "' + category + '" 下没有可用的联系人邮箱');
         return;
       }
-      var bcc = contacts.map(function (c) { return c.email; }).join(',');
+      var bcc = contacts.map(function (c) {
+        if (c.name) { return c.name + ' <' + c.email + '>'; }
+        return c.email;
+      }).join(';');
       var mailto = 'mailto:?bcc=' + encodeURIComponent(bcc);
       window.open(mailto, '_blank');
     })

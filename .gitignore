@@ -17,4 +17,5 @@ Thumbs.db
 .claude/*
 !.claude/skills/
 .playwright-mcp/
+.Download/
 backend/__pycache__/

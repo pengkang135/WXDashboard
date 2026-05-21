@@ -161,7 +161,6 @@ def api_group_contacts(group_id):
 @app.route("/api/contacts/bcc")
 def api_contacts_bcc():
     """Get unique contacts with emails for a category, for BCC mass mail."""
-    import json
     category = request.args.get("category", "")
     project = request.args.get("project", "Laldia")
     if not category:
@@ -170,33 +169,24 @@ def api_contacts_bcc():
     from .config import MY_WECHAT_NAME, MY_EMAIL_KEYWORD
     conn = get_db()
     rows = conn.execute("""
-        SELECT e.content FROM ai_extractions e
-        JOIN groups g ON e.group_id = g.id
-        WHERE e.extract_type='联系人' AND g.deleted=0
-          AND g.category=? AND g.project=?
-    """, (category, project)).fetchall()
+        SELECT c.sender_name, c.email FROM contacts c
+        JOIN groups g ON c.group_id = g.id
+        WHERE g.deleted=0 AND g.category=? AND g.project=?
+          AND c.email IS NOT NULL AND c.email != ''
+          AND c.sender_name IS NOT ?
+          AND (c.email NOT LIKE ?)
+        ORDER BY c.sender_name
+    """, (category, project, MY_WECHAT_NAME, "%" + MY_EMAIL_KEYWORD + "%")).fetchall()
     conn.close()
 
     seen = set()
     result = []
     for r in rows:
-        try:
-            c = json.loads(r["content"])
-        except Exception:
-            continue
-        email = (c.get("邮箱") or "").strip()
-        if not email:
-            continue
-        if MY_EMAIL_KEYWORD and MY_EMAIL_KEYWORD.lower() in email.lower():
-            continue
-        name = c.get("姓名") or ""
-        if MY_WECHAT_NAME and MY_WECHAT_NAME in name:
-            continue
-        key = email.lower()
+        key = r["email"].lower()
         if key in seen:
             continue
         seen.add(key)
-        result.append({"name": name, "email": email})
+        result.append({"name": r["sender_name"] or "", "email": r["email"]})
     return jsonify(result)
 
 
