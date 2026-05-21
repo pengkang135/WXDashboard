@@ -1,15 +1,14 @@
-import sqlite3
-import os
+import html
 import re
 import shutil
 from datetime import datetime, timedelta
 
 from .config import get_wx_file_path
-from .database import DB_PATH
+from .database import get_db
 
 DOWNLOAD_ROOT = r"F:\WXDashboard\.Download"
 
-EXTERNAL_CATEGORIES = {"供应商咨询", "地基处理", "建筑MEP", "保险", "物流"}
+EXTERNAL_CATEGORIES = ["供应商咨询", "地基处理", "建筑MEP", "保险", "物流"]
 
 SUB_CATEGORY_EN = {
     "钢管桩": "SteelPipePile",
@@ -50,12 +49,6 @@ BROCHURE_KEYWORDS = [
 ]
 
 
-def _get_db():
-    conn = sqlite3.connect(DB_PATH, timeout=30)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
 def _get_internal_senders(conn):
     """Dynamically identify our people: anyone who sent messages in internal groups."""
     rows = conn.execute("""
@@ -92,7 +85,7 @@ def collect_file_messages(conn, days=7):
         m = re.search(r'\[文件\]\s*(.+?)(?:\n|$)', row["content"])
         if not m:
             continue
-        filename = m.group(1).strip()
+        filename = html.unescape(m.group(1).strip())
         ext_match = re.search(r'\.(pdf|xlsx)$', filename, re.IGNORECASE)
         if not ext_match:
             continue
