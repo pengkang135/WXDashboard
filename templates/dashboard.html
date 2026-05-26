@@ -95,12 +95,20 @@
   <div class="drawer-body" id="drawer-body"></div>
 </aside>
 
-<div class="modal-overlay" id="sync-modal-overlay"></div>
-<div class="modal" id="sync-modal">
-  <h3>同步消息中</h3>
-  <div class="progress-bar"><div class="progress-fill" id="sync-progress"></div></div>
-  <p id="sync-status-text">正在调用 wx-cli 拉取最新消息...</p>
-  <button class="btn-modal-close" id="sync-modal-close" style="display:none">关闭</button>
+<div class="sync-overlay" id="sync-overlay"></div>
+<div class="sync-panel" id="sync-panel">
+  <div class="sync-header">
+    <h3 id="sync-phase-text">准备同步...</h3>
+    <span class="sync-counter" id="sync-counter"></span>
+  </div>
+  <div class="sync-progress-wrap">
+    <div class="sync-progress-bar">
+      <div class="sync-progress-fill" id="sync-progress-fill"></div>
+    </div>
+  </div>
+  <div class="sync-current" id="sync-current"></div>
+  <div class="sync-log" id="sync-log"></div>
+  <div class="sync-errors" id="sync-errors" style="display:none"></div>
 </div>
 
 <div class="search-panel" id="search-panel" style="display:none">

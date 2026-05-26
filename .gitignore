@@ -8,6 +8,7 @@ data/*.db
 *.db-shm
 data/*.log
 data/sessions_snapshot.json
+data/wx_call_counter.json
 _*.py
 _tmp_*.py
 .DS_Store

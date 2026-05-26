@@ -52,6 +52,10 @@ def init_db():
         conn.execute("ALTER TABLE messages ADD COLUMN extracted INTEGER DEFAULT 0")
     except sqlite3.OperationalError:
         pass
+    try:
+        conn.execute("ALTER TABLE messages ADD COLUMN file_downloaded INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -584,3 +588,33 @@ def get_groups_for_classification():
         })
     conn.close()
     return result
+
+
+def get_undownloaded_file_messages():
+    """获取所有未下载的文件消息（排除图片、语音、视频、链接/卡片），含群组信息。"""
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT m.id, m.group_id, m.sender, m.content, m.msg_time, m.msg_date, m.raw_json,
+               g.name as group_name, g.category, g.project
+        FROM messages m
+        JOIN groups g ON m.group_id = g.id
+        WHERE m.file_downloaded = 0
+          AND m.content LIKE '%[文件]%'
+          AND m.sender != ?
+        ORDER BY m.msg_time ASC
+    """, (MY_WECHAT_NAME,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def mark_files_downloaded(message_ids):
+    """批量标记消息为已下载。"""
+    if not message_ids:
+        return
+    conn = get_db()
+    placeholders = ",".join("?" for _ in message_ids)
+    conn.execute(f"""
+        UPDATE messages SET file_downloaded=1 WHERE id IN ({placeholders})
+    """, message_ids)
+    conn.commit()
+    conn.close()

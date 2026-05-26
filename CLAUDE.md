@@ -39,10 +39,7 @@ python -m backend.app                           # 启动 Flask,监听 127.0.0.1:
 start_ledger.bat
 
 # 数据同步
-python -c "from backend.sync_engine import sync_incremental; print(sync_incremental())"     # 增量同步最新消息
-python -c "from backend.sync_engine import sync_full; print(sync_full('群名'))"              # 全量拉取指定群
-python -c "from backend.sync_engine import sync_all_groups_full; sync_all_groups_full()"     # 全量拉取所有群
-python -c "from backend.sync_engine import discover_new_groups; print(discover_new_groups())" # 发现新群
+python -c "from backend.sync_engine import sync; print(sync())"     # 统一同步(发现新群 + 新群全量 + 增量 + 文件下载)
 
 # 搜索
 python -c "from backend.database import search_messages; print(search_messages('关键词'))"
@@ -143,12 +140,8 @@ WXDashboard/
 | GET  | `/api/search`                      | FTS5 全文搜索                        |
 | GET  | `/api/projects`                    | 项目列表                             |
 | GET  | `/api/sync/status`                 | 同步统计                             |
-| POST | `/api/sync/refresh`                | 增量同步                             |
-| POST | `/api/sync/pull-all`               | 全量拉取(可指定群)                   |
-| POST | `/api/sync/discover`               | 发现新群组                           |
-| POST | `/api/sync/auto/start`             | 启动自动同步(参数 interval 秒)       |
-| POST | `/api/sync/auto/stop`              | 停止自动同步                         |
-| GET  | `/api/sync/auto/status`            | 自动同步状态                         |
+| POST | `/api/sync/refresh`                | 触发同步(发现新群+增量+文件下载)     |
+| GET  | `/api/sync/refresh/status`         | 刷新任务状态                         |
 
 ### 关键路径/常量
 

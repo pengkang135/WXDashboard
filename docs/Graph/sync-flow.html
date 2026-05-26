@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WXDashboard 同步流程</title>
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --ink: #1a1f25;
+    --slate: #3a4454;
+    --steel: #6b7b8d;
+    --fog: #a3b1c2;
+    --ash: #d5dce4;
+    --paper: #f7f5f0;
+    --white: #ffffff;
+    --accent: #c47e3b;
+    --accent-light: #fef4e8;
+    --green: #4a7c59;
+    --green-light: #eaf3ec;
+    --blue: #3b6fb6;
+    --blue-light: #edf3fa;
+    --red: #b84c4c;
+    --red-light: #fdf0f0;
+    --radius: 6px;
+  }
+
+  html { font-size: 15px; }
+
+  body {
+    font-family: "DM Sans", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 40px 20px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .container {
+    width: 860px;
+    max-width: 100%;
+  }
+
+  h1 {
+    font-family: "DM Serif Display", "Noto Serif SC", "Source Han Serif SC", serif;
+    font-size: 1.6rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    text-align: center;
+    margin-bottom: 6px;
+  }
+  h1 span { color: var(--accent); font-weight: 400; }
+
+  .subtitle {
+    text-align: center;
+    color: var(--steel);
+    font-size: 0.85rem;
+    margin-bottom: 36px;
+  }
+
+  /* Flow chart */
+  .flow {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+  }
+
+  .node-row {
+    display: flex;
+    align-items: stretch;
+    width: 100%;
+  }
+
+  .connector {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 52px;
+    flex-shrink: 0;
+  }
+
+  .connector-line {
+    width: 2px;
+    flex: 1;
+    min-height: 28px;
+    background: var(--ash);
+  }
+
+  .connector-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--ash);
+    flex-shrink: 0;
+  }
+
+  .node {
+    background: var(--white);
+    border: 1px solid var(--ash);
+    border-radius: var(--radius);
+    padding: 14px 20px;
+    flex: 1;
+    position: relative;
+    box-shadow: 0 1px 3px rgba(26,31,37,0.04);
+    transition: box-shadow 0.2s;
+  }
+
+  .node:hover { box-shadow: 0 2px 12px rgba(26,31,37,0.06); }
+
+  .node-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 4px;
+  }
+
+  .node-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.9rem;
+    flex-shrink: 0;
+    color: #fff;
+  }
+
+  .icon-blue   { background: var(--blue); }
+  .icon-amber  { background: var(--accent); }
+  .icon-green  { background: var(--green); }
+  .icon-slate  { background: var(--slate); }
+  .icon-red    { background: var(--red); }
+  .icon-steel  { background: var(--steel); }
+
+  .node-title {
+    font-weight: 600;
+    font-size: 0.92rem;
+    color: var(--ink);
+  }
+
+  .node-desc {
+    font-size: 0.8rem;
+    color: var(--steel);
+    margin-top: 2px;
+    line-height: 1.5;
+  }
+
+  .node-code {
+    font-family: "JetBrains Mono", "Cascadia Code", "Fira Code", monospace;
+    font-size: 0.72rem;
+    color: var(--fog);
+    margin-top: 3px;
+  }
+
+  .node-tag {
+    display: inline-block;
+    font-size: 0.7rem;
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-weight: 500;
+    margin-top: 6px;
+  }
+  .tag-blue  { background: var(--blue-light); color: var(--blue); }
+  .tag-green { background: var(--green-light); color: var(--green); }
+  .tag-amber { background: var(--accent-light); color: var(--accent); }
+  .tag-red   { background: var(--red-light); color: var(--red); }
+
+  /* Branch */
+  .branch-row {
+    display: flex;
+    width: 100%;
+    gap: 12px;
+  }
+
+  .branch-connector {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 52px;
+    flex-shrink: 0;
+  }
+
+  .branch-line {
+    width: 2px;
+    flex: 1;
+    min-height: 24px;
+    background: var(--ash);
+  }
+
+  .branch-split {
+    display: flex;
+    width: calc(100% - 52px);
+    gap: 12px;
+  }
+
+  .branch-split .node { flex: 1; }
+
+  .branch-arrow-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    height: 24px;
+  }
+
+  .branch-arrow {
+    width: 100%;
+    height: 1px;
+    background: var(--ash);
+    position: relative;
+  }
+
+  .branch-arrow::after {
+    content: '';
+    position: absolute;
+    right: 8px;
+    top: -4px;
+    border: 5px solid transparent;
+    border-left-color: var(--ash);
+  }
+
+  /* Phase label */
+  .phase-label {
+    text-align: center;
+    font-size: 0.75rem;
+    color: var(--fog);
+    font-weight: 500;
+    margin: 8px 0 4px;
+    letter-spacing: 0.06em;
+  }
+
+  /* Legend */
+  .legend {
+    display: flex;
+    gap: 24px;
+    justify-content: center;
+    margin-top: 40px;
+    padding-top: 24px;
+    border-top: 1px solid var(--ash);
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.78rem;
+    color: var(--steel);
+  }
+
+  .legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+  }
+
+  .legend-dot.blue  { background: var(--blue); }
+  .legend-dot.amber { background: var(--accent); }
+  .legend-dot.green { background: var(--green); }
+  .legend-dot.red   { background: var(--red); }
+  .legend-dot.slate { background: var(--slate); }
+
+  /* Stats bar */
+  .stats-bar {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    margin-top: 20px;
+  }
+
+  .stat-card {
+    background: var(--white);
+    border: 1px solid var(--ash);
+    border-radius: var(--radius);
+    padding: 12px 24px;
+    text-align: center;
+    min-width: 100px;
+  }
+
+  .stat-value {
+    font-family: "DM Serif Display", serif;
+    font-size: 1.4rem;
+    color: var(--accent);
+    font-weight: 700;
+  }
+
+  .stat-label {
+    font-size: 0.72rem;
+    color: var(--steel);
+    margin-top: 2px;
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <h1>WXDashboard <span>同步流程</span></h1>
+  <p class="subtitle">sync_engine.py — 数据采集的完整执行链路</p>
+
+  <!-- Precondition -->
+  <div style="text-align:center; margin-bottom:20px; padding:10px 20px; background:var(--green-light); border:1px solid var(--green); border-radius:var(--radius); font-size:0.85rem; color:var(--green)">
+    前置条件：daemon 已就绪 — Flask 启动时通过 <code>init_daemon()</code> 初始化并缓存，sync 仅做缓存检查
+  </div>
+
+  <div class="flow">
+
+    <!-- Phase: Starting -->
+    <div class="phase-label">PHASE 0 · HTTP 触发</div>
+    <div class="node-row">
+      <div class="connector">
+        <div class="connector-dot" style="background:var(--blue)"></div>
+      </div>
+      <div class="node">
+        <div class="node-header">
+          <div class="node-icon icon-blue">&#9654;</div>
+          <div class="node-title">用户点击刷新 / POST /api/sync/refresh</div>
+        </div>
+        <div class="node-desc">前端展示进度面板，创建后台线程执行 sync()</div>
+        <div class="node-code">app.py → threading.Thread → sync(progress=SyncProgress)</div>
+        <span class="node-tag tag-blue">前端触发</span>
+      </div>
+    </div>
+
+    <!-- Connector -->
+    <div class="node-row">
+      <div class="connector"><div class="connector-line"></div></div>
+      <div style="flex:1"></div>
+    </div>
+
+    <!-- Phase 1: Discovering -->
+    <div class="phase-label">PHASE 1 · discovering</div>
+    <div class="node-row">
+      <div class="connector"><div class="connector-line"></div></div>
+      <div class="node">
+        <div class="node-header">
+          <div class="node-icon icon-blue">&#128269;</div>
+          <div class="node-title">发现新群</div>
+        </div>
+        <div class="node-desc">调用 wx sessions 获取全部会话，匹配 PROJECT_RULES 关键词（如 laldia、港湾），过滤 SKIP_KEYWORDS（如通威），对匹配到的新群提取群主、推断分类后入库</div>
+        <div class="node-code">_discover_new_groups() → _infer_project() → _infer_category() → upsert_group()</div>
+        <span class="node-tag tag-blue">群间延迟 3-8s</span>
+      </div>
+    </div>
+
+    <!-- Connector -->
+    <div class="node-row">
+      <div class="connector"><div class="connector-line"></div></div>
+      <div style="flex:1"></div>
+    </div>
+
+    <!-- Phase 2: Sync new groups -->
+    <div class="phase-label">PHASE 2 · syncing_new（如有新群）</div>
+    <div class="node-row">
+      <div class="connector"><div class="connector-line"></div></div>
+      <div class="node">
+        <div class="node-header">
+          <div class="node-icon icon-blue">&#8681;</div>
+          <div class="node-title">新群全量同步</div>
+        </div>
+        <div class="node-desc">对每个新群通过 wx history 拉取最近 500 条消息（LOW RISK），解析后写入 messages 表，同步提取联系人信息</div>
+        <div class="node-code">safe_history(name, limit=500) → _store_group_messages() → upsert + extract contacts</div>
+        <span class="node-tag tag-blue">批量 500 条/群</span>
+      </div>
+    </div>
+
+    <div class="node-row">
+      <div class="connector"><div class="connector-line"></div></div>
+      <div style="flex:1"></div>
+    </div>
+
+    <!-- Phase 3: Syncing -->
+    <div class="phase-label">PHASE 3 · syncing（核心阶段）</div>
+    <div class="node-row">
+      <div class="connector"><div class="connector-line"></div></div>
+      <div class="node">
+        <div class="node-header">
+          <div class="node-icon icon-amber">&#8635;</div>
+          <div class="node-title">全量增量同步 — 单次调用</div>
+        </div>
+        <div class="node-desc">单次调用 wx new-messages --json -n 500 获取跨全部会话的增量消息（LOW RISK，基于检查点）。返回的消息按群名分组，过滤项目关键词，逐群入库。图片/视频消息从 content 中正则提取 local_id 用于去重</div>
+        <div class="node-code">safe_new_messages(limit=500) → 按 chat 分组 → _store_group_messages()</div>
+        <span class="node-tag tag-amber">单次 API 调用 | 500 条上限</span>
+      </div>
+    </div>
+
+    <!-- Connector -->
+    <div class="node-row">
+      <div class="connector"><div class="connector-line"></div></div>
+      <div style="flex:1"></div>
+    </div>
+
+    <!-- Phase 4: Files -->
+    <div class="phase-label">PHASE 4 · files</div>
+    <div class="node-row">
+      <div class="connector"><div class="connector-line"></div></div>
+      <div class="node">
+        <div class="node-header">
+          <div class="node-icon icon-steel">&#128196;</div>
+          <div class="node-title">下载新文件</div>
+        </div>
+        <div class="node-desc">扫描 messages 表中未被标记为已下载的文件消息，通过 wx-cli 导出文件到本地 .Download 目录</div>
+        <div class="node-code">file_downloader.download_new_files()</div>
+        <span class="node-tag tag-green">按需下载</span>
+      </div>
+    </div>
+
+    <!-- Connector -->
+    <div class="node-row">
+      <div class="connector"><div class="connector-line"></div></div>
+      <div style="flex:1"></div>
+    </div>
+
+    <!-- Phase 5: Done -->
+    <div class="phase-label">PHASE 5 · done</div>
+    <div class="node-row">
+      <div class="connector">
+        <div class="connector-dot" style="background:var(--green)"></div>
+      </div>
+      <div class="node" style="border-color:var(--green)">
+        <div class="node-header">
+          <div class="node-icon icon-green">&#10003;</div>
+          <div class="node-title">同步完成 - 返回统计结果</div>
+        </div>
+        <div class="node-desc">合并各阶段统计（新群数、新增消息数、更新群数、下载文件数），写入 sync_log 审计日志。前端轮询检测到 running=false 后展示结果摘要并刷新视图</div>
+        <div class="node-code">stats → add_sync_log() → progress.finish() → 前端 refreshCurrentView()</div>
+        <span class="node-tag tag-green">audit logged</span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Legend -->
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot blue"></div> I/O 操作</div>
+    <div class="legend-item"><div class="legend-dot amber"></div> wx-cli 调用</div>
+    <div class="legend-item"><div class="legend-dot slate"></div> 状态判断</div>
+    <div class="legend-item"><div class="legend-dot green"></div> 成功/审计</div>
+    <div class="legend-item"><div class="legend-dot red"></div> 错误终止</div>
+  </div>
+
+  <!-- Stats summary -->
+  <div class="stats-bar">
+    <div class="stat-card">
+      <div class="stat-value">1.5s</div>
+      <div class="stat-label">wx-cli 最小间隔</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">3-8s</div>
+      <div class="stat-label">群间随机延迟</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">500</div>
+      <div class="stat-label">增量/全量上限</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">1 次</div>
+      <div class="stat-label">增量同步调用</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">200</div>
+      <div class="stat-label">每日调用上限</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">5</div>
+      <div class="stat-label">同步阶段数</div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

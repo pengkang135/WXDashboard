@@ -1,29 +1,96 @@
 import json
-import os
-import sys
-import subprocess
-import shutil
+import re
 import time
 import random
-from datetime import datetime
-from .config import SYNC_DELAY_MIN, SYNC_DELAY_MAX, SYNC_BATCH_LIMIT, WX_MIN_INTERVAL
+import threading
+from .config import SYNC_DELAY_MIN, SYNC_DELAY_MAX
 from .database import (
     get_db, upsert_message, upsert_group, update_group_stats, add_sync_log,
     get_all_group_names, get_message_count
 )
+from .safe_wx import ensure_daemon, safe_export_sessions, safe_get_members, safe_new_messages, safe_history
 
 
-WX_CLI = shutil.which("wx") or "wx"
+class SyncProgress:
+    """Thread-safe progress tracker for sync operations."""
 
-_wx_js = None
-if WX_CLI != "wx" and WX_CLI.lower().endswith(".cmd"):
-    _wx_dir = os.path.dirname(WX_CLI)
-    _candidate = os.path.join(_wx_dir, "node_modules", "@jackwener", "wx-cli", "bin", "wx.js")
-    if os.path.isfile(_candidate):
-        _wx_js = _candidate
+    def __init__(self):
+        self._lock = threading.Lock()
+        self.reset()
+
+    def reset(self):
+        with self._lock:
+            self.phase = ""
+            self.current_group = ""
+            self.group_index = 0
+            self.total_groups = 0
+            self.log_lines = []
+            self.errors = []
+            self.result = None
+            self.running = False
+            self.started_at = None
+
+    def start(self):
+        with self._lock:
+            self.running = True
+            self.started_at = time.time()
+            self.phase = "starting"
+            self.log_lines = []
+
+    def set_phase(self, phase, total_groups=0):
+        with self._lock:
+            self.phase = phase
+            if total_groups > 0:
+                self.total_groups = total_groups
+            self.group_index = 0
+            self.current_group = ""
+
+    def step_group(self, group_name, index=None, total=None):
+        with self._lock:
+            self.current_group = group_name
+            if index is not None:
+                self.group_index = index
+            else:
+                self.group_index += 1
+            if total is not None:
+                self.total_groups = total
+
+    def add_log(self, message):
+        with self._lock:
+            self.log_lines.append(message)
+            if len(self.log_lines) > 50:
+                self.log_lines = self.log_lines[-50:]
+
+    def add_error(self, error):
+        with self._lock:
+            self.errors.append(error)
+
+    def finish(self, result):
+        with self._lock:
+            self.running = False
+            self.result = result
+            self.phase = "done"
+
+    def to_dict(self):
+        with self._lock:
+            elapsed = time.time() - self.started_at if self.started_at else 0
+            return {
+                "running": self.running,
+                "phase": self.phase,
+                "current_group": self.current_group,
+                "group_index": self.group_index,
+                "total_groups": self.total_groups,
+                "log_lines": list(self.log_lines[-8:]),
+                "errors": list(self.errors[-5:]),
+                "result": self.result,
+                "elapsed": round(elapsed, 1)
+            }
+
+
+_safe_mode_available = None
 
 PROJECT_RULES = [
-    (["laldia", "港湾"], "Laldia"),
+    (["laldia", "laidia", "港湾"], "Laldia"),
     (["泰国"], "泰国光伏"),
 ]
 
@@ -78,14 +145,9 @@ def _infer_project(name):
 
 def _fetch_group_owner(group_name):
     try:
-        output = _run_wx(["members", group_name, "--json"], timeout=30)
-        members = json.loads(output) if output else []
-        for m in members:
-            if m.get("is_owner"):
-                return m.get("display", "")
+        return safe_get_members(group_name)
     except Exception:
-        pass
-    return ""
+        return ""
 
 
 def _infer_category(name):
@@ -104,70 +166,33 @@ def _infer_subcategory(name, category=None):
     return ""
 
 
-def _human_delay(reason_hint=""):
+def _human_delay(reason_hint="", progress=None):
     delay = random.uniform(SYNC_DELAY_MIN, SYNC_DELAY_MAX)
     if reason_hint:
-        print(f"[延迟 {delay:.1f}s] {reason_hint}")
+        msg = f"[延迟 {delay:.1f}s] {reason_hint}"
+        print(msg)
+        if progress:
+            progress.add_log(msg)
     time.sleep(delay)
 
 
-_last_wx_call = 0.0
+def init_daemon():
+    """Start daemon at app startup. Caches success to skip future checks."""
+    global _safe_mode_available
+    if _safe_mode_available:
+        return True, "cached"
 
-
-def _run_wx(args, timeout=120):
-    global _last_wx_call
-    elapsed = time.time() - _last_wx_call
-    if elapsed < WX_MIN_INTERVAL:
-        time.sleep(WX_MIN_INTERVAL - elapsed)
-    import tempfile, os as _os
-    if _wx_js:
-        cmd_list = ["node", _wx_js] + args
+    ok, msg = ensure_daemon()
+    _safe_mode_available = ok
+    if not ok:
+        print(f"[app] daemon 未就绪 — 微信可能未启动 ({msg})")
     else:
-        if WX_CLI == "wx" and not shutil.which("wx"):
-            raise RuntimeError("wx-cli 未安装")
-        cmd_list = [WX_CLI] + args
-
-    tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, encoding="utf-8")
-    tmp.close()
-    try:
-        creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
-        result = subprocess.run(
-            cmd_list,
-            stdout=open(tmp.name, "w", encoding="utf-8"),
-            stderr=subprocess.PIPE, text=False, timeout=timeout,
-            creationflags=creationflags
-        )
-        with open(tmp.name, "r", encoding="utf-8") as f:
-            stdout = f.read()
-    except FileNotFoundError:
-        _os.unlink(tmp.name)
-        raise RuntimeError("wx-cli 未安装")
-    except subprocess.TimeoutExpired:
-        _os.unlink(tmp.name)
-        raise RuntimeError(f"wx-cli 执行超时 ({timeout}s)")
-    finally:
-        try:
-            _os.unlink(tmp.name)
-        except OSError:
-            pass
-    if result.returncode != 0:
-        stderr_bytes = result.stderr or b""
-        try:
-            stderr = stderr_bytes.decode("gbk").strip()
-        except (UnicodeDecodeError, LookupError):
-            stderr = stderr_bytes.decode("utf-8", errors="replace").strip()
-        if "not found" in stderr.lower() or "not recognized" in stderr.lower():
-            raise RuntimeError("wx-cli 未安装")
-        if "init" in stderr.lower():
-            raise RuntimeError("wx-cli 未初始化，请运行: wx init")
-        raise RuntimeError(f"wx-cli 错误: {stderr or '未知错误'}")
-    _last_wx_call = time.time()
-    return (stdout or "").strip()
+        print(f"[app] daemon 已就绪: {msg}")
+    return ok, msg
 
 
-def discover_new_groups(project=None):
-    output = _run_wx(["sessions", "-n", "200", "--json"])
-    sessions = json.loads(output) if output else []
+def _discover_new_groups(progress=None):
+    sessions = safe_export_sessions(limit=200)
     group_names = set(get_all_group_names())
     new_groups = []
 
@@ -181,8 +206,6 @@ def discover_new_groups(project=None):
         proj = _infer_project(name)
         if not proj:
             continue
-        if project and proj != project:
-            continue
 
         category = _infer_category(name)
         sub_category = _infer_subcategory(name, category)
@@ -190,155 +213,21 @@ def discover_new_groups(project=None):
         upsert_group(name, category, sub_category=sub_category, project=proj, group_creator=owner)
         group_names.add(name)
         new_groups.append((name, category, sub_category, proj))
-        _human_delay(f"发现新群: {name}")
+        _human_delay(f"发现新群: {name}", progress=progress)
 
     return new_groups
 
 
-SNAPSHOT_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                             "data", "sessions_snapshot.json")
-_sync_call_count = 0
+def _pull_group_messages(group_name, limit=200, since=None):
+    return safe_history(group_name, limit=limit, since=since)
 
 
-def _load_sessions_snapshot():
-    if os.path.isfile(SNAPSHOT_FILE):
-        with open(SNAPSHOT_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return {"sessions": []}
-
-
-def _save_sessions_snapshot(data):
-    os.makedirs(os.path.dirname(SNAPSHOT_FILE), exist_ok=True)
-    with open(SNAPSHOT_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False)
-
-
-def sync_incremental():
-    global _sync_call_count
-    _sync_call_count += 1
-    do_full = (_sync_call_count % 5 == 0)
-
-    stats = {"groups_updated": 0, "messages_new": 0, "errors": [],
-             "new_groups_discovered": [], "contacts_extracted": 0,
-             "full_sync": do_full}
-
-    project_keywords = []
-    for keywords, _proj in PROJECT_RULES:
-        for kw in keywords:
-            project_keywords.append(kw)
-
-    # Step 1: discover new groups
-    try:
-        for name, cat, sub, proj in discover_new_groups():
-            stats["new_groups_discovered"].append({"name": name, "category": cat, "project": proj})
-    except Exception as e:
-        stats["errors"].append(f"discover_new_groups: {str(e)}")
-
-    # Step 2: wx sessions + snapshot comparison
-    current_positions = {}
-    try:
-        sessions_json = _run_wx(["sessions", "-n", "50", "--json"])
-        sessions = json.loads(sessions_json) if sessions_json else []
-        for idx, s in enumerate(sessions):
-            if s.get("chat_type") != "group":
-                continue
-            name = s.get("chat", "")
-            if any(kw in name.lower() for kw in project_keywords):
-                if not any(sk in name.lower() for sk in SKIP_KEYWORDS):
-                    current_positions[name] = idx
-    except Exception as e:
-        stats["errors"].append(f"sessions: {str(e)}")
-
-    prev_snapshot = _load_sessions_snapshot()
-    prev_positions = {s["chat"]: s["position"] for s in prev_snapshot.get("sessions", [])}
-
-    groups_to_sync = set()
-
-    if do_full:
-        groups_to_sync = set(current_positions.keys())
-        conn0 = get_db()
-        for row in conn0.execute(
-            "SELECT g.name FROM groups g LEFT JOIN messages m ON m.group_id=g.id "
-            "WHERE m.id IS NULL AND g.deleted=0"
-        ).fetchall():
-            groups_to_sync.add(row["name"])
-        conn0.close()
-    else:
-        for name, pos in current_positions.items():
-            prev_pos = prev_positions.get(name, 999)
-            if pos == 0 or pos < prev_pos:
-                groups_to_sync.add(name)
-
-    # Step 3: save current snapshot
-    snapshot_sessions = [{"chat": name, "position": pos}
-                         for name, pos in current_positions.items()]
-    _save_sessions_snapshot({
-        "timestamp": datetime.now().isoformat(),
-        "sessions": snapshot_sessions
-    })
-
-    # Step 4: sync selected groups
-    for gname in groups_to_sync:
-        _human_delay(f"同步群: {gname}")
-        try:
-            conn = get_db()
-            group = conn.execute("SELECT id FROM groups WHERE name=?", (gname,)).fetchone()
-            if not group:
-                conn.close()
-                continue
-            gid = group["id"]
-
-            last = conn.execute(
-                "SELECT msg_date FROM messages WHERE group_id=? ORDER BY msg_time DESC LIMIT 1",
-                (gid,)
-            ).fetchone()
-            conn.close()
-
-            since_date = last["msg_date"] if last else "2025-01-01"
-
-            output = _run_wx(
-                ["history", gname, "--json", "--since", since_date, "-n", str(SYNC_BATCH_LIMIT)],
-                timeout=300
-            )
-            messages = json.loads(output) if output else []
-
-            conn2 = get_db()
-            new_in_group = 0
-            for msg in messages:
-                if _upsert_from_wx_msg(conn2, gid, msg):
-                    new_in_group += 1
-
-            count = conn2.execute(
-                "SELECT COUNT(*) as cnt FROM messages WHERE group_id=?", (gid,)
-            ).fetchone()["cnt"]
-            last_time = conn2.execute(
-                "SELECT msg_time FROM messages WHERE group_id=? ORDER BY msg_time DESC LIMIT 1",
-                (gid,)
-            ).fetchone()
-            update_group_stats(gid, last_active_date=last_time["msg_time"] if last_time else None,
-                              total_messages=count, conn=conn2)
-            conn2.close()
-
-            stats["messages_new"] += new_in_group
-            if new_in_group > 0:
-                stats["groups_updated"] += 1
-        except Exception as e:
-            stats["errors"].append(f"{gname}: {str(e)}")
-
-    add_sync_log("全部群组(增量)", None, 0, stats["messages_new"],
-                  "ok" if not stats["errors"] else f"部分错误: {len(stats['errors'])}个群")
-
-    return stats
-
-
-def sync_full(group_name, limit=500):
-    output = _run_wx(["history", group_name, "--json", "-n", str(limit)], timeout=300)
-    messages = json.loads(output) if output else []
-
+def _store_group_messages(group_name, messages):
     conn = get_db()
     group = conn.execute("SELECT id FROM groups WHERE name=?", (group_name,)).fetchone()
     if not group:
-        group_id = upsert_group(group_name, _infer_category(group_name), project="Laldia")
+        group_id = upsert_group(group_name, _infer_category(group_name),
+                                project=_infer_project(group_name) or "Laldia")
     else:
         group_id = group["id"]
 
@@ -348,31 +237,157 @@ def sync_full(group_name, limit=500):
             new_count += 1
 
     count = conn.execute("SELECT COUNT(*) as cnt FROM messages WHERE group_id=?", (group_id,)).fetchone()["cnt"]
-    last_date = None
-    if messages:
-        last_date = messages[-1].get("time", "")
+    last_date = max((m.get("time", "") for m in messages), default=None) if messages else None
     update_group_stats(group_id, last_active_date=last_date, total_messages=count, conn=conn)
     conn.close()
-
-    add_sync_log(group_name, None, len(messages), new_count, "ok")
-    return {"group": group_name, "pulled": len(messages), "new": new_count, "total": count}
+    return {"new": new_count, "total": count}
 
 
-def sync_all_groups_full(limit=500):
-    results = []
-    errors = []
-    for gname in get_all_group_names():
-        _human_delay(f"全量同步群: {gname}")
+def sync(progress=None):
+    from .file_downloader import download_new_files
+
+    if progress:
+        progress.start()
+
+    daemon_ok, daemon_msg = init_daemon()
+    if not daemon_ok:
+        result = {"status": "daemon_unavailable", "message": daemon_msg,
+                "groups_updated": 0, "messages_new": 0, "errors": [],
+                "new_groups_discovered": [], "files_downloaded": 0}
+        if progress:
+            progress.finish(result)
+        return result
+
+    stats = {"groups_updated": 0, "messages_new": 0, "errors": [],
+             "new_groups_discovered": [], "files_downloaded": 0}
+
+    project_keywords = []
+    for keywords, _proj in PROJECT_RULES:
+        for kw in keywords:
+            project_keywords.append(kw)
+
+    # Step 1: discover new groups
+    if progress:
+        progress.set_phase("discovering")
+        progress.add_log("正在扫描会话列表，发现新群...")
+    new_groups = []
+    try:
+        for name, cat, sub, proj in _discover_new_groups(progress=progress):
+            new_groups.append((name, cat, sub, proj))
+            stats["new_groups_discovered"].append({"name": name, "category": cat, "project": proj})
+    except Exception as e:
+        stats["errors"].append(f"discover: {str(e)}")
+        if progress:
+            progress.add_error(str(e))
+
+    # Step 2: full sync for newly discovered groups
+    if new_groups:
+        if progress:
+            progress.set_phase("syncing_new", total_groups=len(new_groups))
+            progress.add_log(f"发现 {len(new_groups)} 个新群，开始全量同步")
+        for i, (name, _, _, _) in enumerate(new_groups):
+            if progress:
+                progress.step_group(name, i + 1)
+            _human_delay(f"新群全量同步: {name}", progress=progress)
+            try:
+                messages = _pull_group_messages(name, limit=500)
+                r = _store_group_messages(name, messages)
+                stats["messages_new"] += r["new"]
+                if r["new"] > 0:
+                    stats["groups_updated"] += 1
+                if progress:
+                    progress.add_log(f"{name}: +{r['new']} 条消息")
+            except Exception as e:
+                stats["errors"].append(f"{name}: {str(e)}")
+                if progress:
+                    progress.add_error(f"{name}: {str(e)}")
+
+    # Step 3: incremental sync via wx new-messages (single call, all chats)
+    if progress:
+        progress.set_phase("syncing")
+        progress.add_log("拉取增量消息 (wx new-messages)...")
+    try:
+        all_new = safe_new_messages(limit=500)
+        if progress:
+            progress.add_log(f"收到 {len(all_new)} 条新消息")
+    except Exception as e:
+        all_new = []
+        stats["errors"].append(f"new-messages: {str(e)}")
+        if progress:
+            progress.add_error(str(e))
+
+    grouped = {}
+    for msg in all_new:
+        chat_name = msg.get("chat", "")
+        if msg.get("chat_type") != "group":
+            continue
+        if not any(kw in chat_name.lower() for kw in project_keywords):
+            continue
+        if any(sk in chat_name.lower() for sk in SKIP_KEYWORDS):
+            continue
+        grouped.setdefault(chat_name, []).append(msg)
+
+    group_names = list(grouped.keys())
+    if progress:
+        progress.set_phase("syncing", total_groups=len(group_names))
+        progress.add_log(f"增量同步 {len(group_names)} 个群 ({len(all_new)} 条消息)")
+
+    for idx, gname in enumerate(group_names, 1):
+        msgs = grouped[gname]
+        if progress:
+            progress.step_group(gname, idx)
         try:
-            r = sync_full(gname, limit)
-            results.append(r)
+            r = _store_group_messages(gname, msgs)
+            stats["messages_new"] += r["new"]
+            if r["new"] > 0:
+                stats["groups_updated"] += 1
+            if progress:
+                progress.add_log(f"{gname}: +{r['new']} 条")
         except Exception as e:
-            errors.append({"group": gname, "error": str(e)})
-    return {"results": results, "errors": errors}
+            stats["errors"].append(f"{gname}: {str(e)}")
+            if progress:
+                progress.add_error(f"{gname}: {str(e)}")
+
+    # Step 4: download new files
+    if progress:
+        progress.set_phase("files")
+        progress.add_log("检查新文件...")
+    try:
+        file_stats = download_new_files()
+        stats["files_downloaded"] = file_stats.get("downloaded", 0)
+        if progress and stats["files_downloaded"] > 0:
+            progress.add_log(f"下载了 {stats['files_downloaded']} 个新文件")
+    except Exception as e:
+        stats["errors"].append(f"download_files: {str(e)}")
+        if progress:
+            progress.add_error(str(e))
+
+    add_sync_log("全部群组", None, 0, stats["messages_new"],
+                  "ok" if not stats["errors"] else f"部分错误: {len(stats['errors'])}个群")
+
+    if progress:
+        progress.finish(stats)
+    return stats
+
+
+_loc_id_re = re.compile(r"local_id=(\d+)")
+
+
+def _extract_local_id(msg):
+    lid = msg.get("local_id")
+    if lid:
+        return lid
+    ts = msg.get("timestamp")
+    if ts:
+        m = _loc_id_re.search(msg.get("content", ""))
+        if m:
+            return int(m.group(1))
+        return ts
+    return 0
 
 
 def _upsert_from_wx_msg(conn, group_id, msg):
-    local_id = msg.get("local_id")
+    local_id = _extract_local_id(msg)
     sender = msg.get("sender", "未知")
     content = msg.get("content", "")
     msg_time = msg.get("time", "")

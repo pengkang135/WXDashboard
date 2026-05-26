@@ -41,15 +41,8 @@ document.addEventListener('DOMContentLoaded', function () {
     switchDrawerTab(tab.dataset.tab);
   });
 
-  // 启动后端自动同步，由前端心跳保活
-  fetch('/api/sync/auto/start', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({interval: 60}) });
-  // 每30秒心跳，维持自动同步
-  setInterval(function() { fetch('/api/heartbeat', { method: 'POST' }); }, 30000);
+  // 自动同步已禁用 — 仅用户手动刷新或AI主动调用时更新
   initColumnResize();
-  // 页面关闭时停止自动同步
-  window.addEventListener('beforeunload', function() {
-    navigator.sendBeacon('/api/sync/auto/stop');
-  });
 });
 
 function loadProjects() {
@@ -998,41 +991,141 @@ function onExport() {
     });
 }
 
-var _toastTimer = null;
+var _syncPollTimer = null;
+var _syncDoneTimer = null;
 
-function showToast(msg, hasNew) {
-  var el = document.getElementById('toast');
-  if (!el) {
-    el = document.createElement('div');
-    el.id = 'toast';
-    el.className = 'toast';
-    document.body.appendChild(el);
-  }
-  if (_toastTimer) clearTimeout(_toastTimer);
-  el.classList.remove('show');
-  void el.offsetWidth;
-  el.textContent = msg;
-  if (hasNew) {
-    el.classList.remove('toast-nonew');
+function showSyncPanel() {
+  document.getElementById('sync-overlay').classList.add('show');
+  var panel = document.getElementById('sync-panel');
+  panel.classList.add('show');
+  var doneEl = panel.querySelector('.sync-done');
+  if (doneEl) doneEl.remove();
+  document.getElementById('sync-phase-text').textContent = '准备同步...';
+  document.getElementById('sync-counter').textContent = '';
+  document.getElementById('sync-progress-fill').style.width = '0%';
+  document.getElementById('sync-current').textContent = '';
+  clearSyncLog();
+  hideSyncErrors();
+}
+
+function clearSyncLog() {
+  var log = document.getElementById('sync-log');
+  while (log.firstChild) log.removeChild(log.firstChild);
+}
+
+function appendSyncLogLine(text) {
+  var log = document.getElementById('sync-log');
+  var div = document.createElement('div');
+  div.className = 'log-line';
+  div.textContent = text;
+  log.appendChild(div);
+  log.scrollTop = log.scrollHeight;
+}
+
+function hideSyncErrors() {
+  var err = document.getElementById('sync-errors');
+  err.style.display = 'none';
+  while (err.firstChild) err.removeChild(err.firstChild);
+}
+
+function showSyncError(text) {
+  var err = document.getElementById('sync-errors');
+  err.style.display = 'block';
+  var div = document.createElement('div');
+  div.className = 'err-line';
+  div.textContent = text;
+  err.appendChild(div);
+}
+
+function updateSyncPanel(data) {
+  var phaseMap = {
+    'starting': '正在启动...',
+    'discovering': '正在扫描新群...',
+    'syncing_new': '正在同步新群...',
+    'analyzing': '正在分析群组活跃状态...',
+    'syncing': '正在同步消息...',
+    'files': '正在检查文件...',
+    'done': '同步完成'
+  };
+  document.getElementById('sync-phase-text').textContent = phaseMap[data.phase] || data.phase;
+
+  if (data.total_groups > 0 && (data.phase === 'syncing' || data.phase === 'syncing_new')) {
+    document.getElementById('sync-counter').textContent = data.group_index + '/' + data.total_groups;
+    var pct = Math.round((data.group_index / data.total_groups) * 100);
+    document.getElementById('sync-progress-fill').style.width = pct + '%';
+  } else if (data.phase === 'done') {
+    document.getElementById('sync-progress-fill').style.width = '100%';
+    document.getElementById('sync-counter').textContent = '';
   } else {
-    el.classList.add('toast-nonew');
+    document.getElementById('sync-progress-fill').style.width = '10%';
+    document.getElementById('sync-counter').textContent = '';
   }
-  el.classList.add('show');
-  _toastTimer = setTimeout(function () {
-    el.classList.remove('show');
-  }, 2000);
+
+  if (data.current_group) {
+    document.getElementById('sync-current').textContent = data.current_group;
+  }
+
+  if (data.log_lines && data.log_lines.length > 0) {
+    clearSyncLog();
+    data.log_lines.forEach(function (line) { appendSyncLogLine(line); });
+  }
+
+  if (data.errors && data.errors.length > 0) {
+    hideSyncErrors();
+    data.errors.forEach(function (e) { showSyncError(e); });
+  }
+}
+
+function closeSyncPanel(delay) {
+  delay = delay || 0;
+  if (_syncDoneTimer) clearTimeout(_syncDoneTimer);
+  _syncDoneTimer = setTimeout(function () {
+    document.getElementById('sync-overlay').classList.remove('show');
+    document.getElementById('sync-panel').classList.remove('show');
+    if (_syncPollTimer) { clearTimeout(_syncPollTimer); _syncPollTimer = null; }
+  }, delay);
+}
+
+function showSyncDone(result) {
+  var panel = document.getElementById('sync-panel');
+  var oldDone = panel.querySelector('.sync-done');
+  if (oldDone) oldDone.remove();
+
+  var doneEl = document.createElement('div');
+  doneEl.className = 'sync-done';
+
+  var textEl = document.createElement('div');
+  textEl.className = 'sync-done-text';
+  var newGroups = (result.new_groups_discovered || []).length;
+  var newMsgs = result.messages_new || 0;
+  var parts = [];
+  if (newMsgs > 0) parts.push('+' + newMsgs + ' 条新消息');
+  if (newGroups > 0) parts.push('+' + newGroups + ' 个新群');
+  if (result.groups_updated > 0) parts.push(result.groups_updated + ' 个群有更新');
+  if (parts.length === 0) parts.push('无新增内容');
+  textEl.textContent = parts.join(' · ');
+  doneEl.appendChild(textEl);
+
+  var closeBtn = document.createElement('button');
+  closeBtn.className = 'sync-done-close';
+  closeBtn.textContent = '关闭';
+  closeBtn.addEventListener('click', function () { closeSyncPanel(0); });
+  doneEl.appendChild(closeBtn);
+
+  panel.appendChild(doneEl);
+  if (_syncDoneTimer) clearTimeout(_syncDoneTimer);
+  _syncDoneTimer = setTimeout(function () { closeSyncPanel(0); }, 4000);
 }
 
 function onRefresh() {
   var btn = document.getElementById('refresh-btn');
   if (btn.disabled) return;
   btn.disabled = true;
+  btn.classList.add('syncing');
 
-  var prevGroupCount = groupsData.length;
-  var prevMsgTotal = 0;
-  groupsData.forEach(function (g) { prevMsgTotal += (parseInt(g.message_count) || 0); });
+  showSyncPanel();
 
-  fetch('/api/sync/refresh', { method: 'POST' })
+  fetch('/api/sync/refresh', { method: 'POST', headers: { 'X-Sync-Token': 'wxdashboard-sync' } })
     .then(function (r) { return r.json(); })
     .then(function () {
       function poll() {
@@ -1040,30 +1133,37 @@ function onRefresh() {
           .then(function (r) { return r.json(); })
           .then(function (s) {
             if (!s.running) {
-              refreshCurrentView(function () {
-                btn.disabled = false;
-                var groupCount = groupsData.length;
-                var msgTotal = 0;
-                groupsData.forEach(function (g) { msgTotal += (parseInt(g.message_count) || 0); });
-                var diff = msgTotal - prevMsgTotal;
-                if (diff > 0) {
-                  showToast('刷新完成 · ' + groupCount + ' 个群 · +' + diff + ' 条新消息', true);
-                } else if (msgTotal > 0) {
-                  showToast('已刷新 ' + groupCount + ' 个群 · 共 ' + msgTotal + ' 条 · 无新增', false);
-                } else {
-                  showToast('已刷新 · 暂无消息', false);
-                }
-              });
+              btn.disabled = false;
+              btn.classList.remove('syncing');
+              var result = s.result || {};
+
+              if (result.status === 'daemon_unavailable') {
+                updateSyncPanel({ phase: 'done', log_lines: [], errors: ['微信未运行，无法同步。请确认微信已打开。'] });
+                showSyncDone({ messages_new: 0, new_groups_discovered: [], groups_updated: 0 });
+                return;
+              }
+              if (result.error) {
+                updateSyncPanel({ phase: 'done', log_lines: [], errors: [result.error] });
+                showSyncDone({ messages_new: 0, new_groups_discovered: [], groups_updated: 0 });
+                return;
+              }
+
+              updateSyncPanel({ phase: 'done', log_lines: s.log_lines || [], errors: s.errors || [], total_groups: s.total_groups || 0, group_index: s.total_groups || 0 });
+              showSyncDone(result);
+              refreshCurrentView();
             } else {
-              setTimeout(poll, 500);
+              updateSyncPanel(s);
+              _syncPollTimer = setTimeout(poll, 400);
             }
           });
       }
-      setTimeout(poll, 300);
+      _syncPollTimer = setTimeout(poll, 300);
     })
     .catch(function () {
       btn.disabled = false;
-      showToast('同步请求失败', false);
+      btn.classList.remove('syncing');
+      updateSyncPanel({ phase: 'done', log_lines: [], errors: ['同步请求失败，请稍后重试'] });
+      showSyncDone({ messages_new: 0, new_groups_discovered: [], groups_updated: 0 });
     });
 }
 

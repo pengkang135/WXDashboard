@@ -1,0 +1,33 @@
+{
+  "chat": "港湾+二航局-孟加拉Laldia码头沟通",
+  "chat_type": "group",
+  "count": 3,
+  "is_group": true,
+  "messages": [
+    {
+      "content": "反正我大概知道你们的要求，明天完善一下吧",
+      "local_id": 90,
+      "sender": "渃风🍀🍀",
+      "time": "2026-05-24 21:53",
+      "timestamp": 1779634384,
+      "type": "文本"
+    },
+    {
+      "content": "关税总额也有在成本汇总表里面显示",
+      "local_id": 91,
+      "sender": "渃风🍀🍀",
+      "time": "2026-05-24 21:53",
+      "timestamp": 1779634405,
+      "type": "文本"
+    },
+    {
+      "content": "写一页纸就可以了",
+      "local_id": 92,
+      "sender": "彭康",
+      "time": "2026-05-24 21:53",
+      "timestamp": 1779634421,
+      "type": "文本"
+    }
+  ],
+  "username": "58785487867@chatroom"
+}

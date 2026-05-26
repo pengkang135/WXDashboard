@@ -25,23 +25,16 @@ _WX_FILE_ROOT = None
 
 def _detect_wx_data_dir():
     global WX_DATA_DIR, _WX_FILE_ROOT
-    import subprocess as _sp
+    # Use cached path from wx-cli config instead of calling `wx init`
+    wx_config = os.path.expanduser("~/.wx-cli/config.json")
     try:
-        result = _sp.run(
-            ["wx", "init"],
-            capture_output=True, text=True, timeout=15,
-            env={**_sp.os.environ, "NO_COLOR": "1"}
-        )
-        for line in (result.stdout + result.stderr).split("\n"):
-            if "数据目录" in line or "data" in line.lower():
-                import re
-                m = re.search(r'[A-Za-z]:\\[^\s,]+', line)
-                if m:
-                    WX_DATA_DIR = m.group(0).rstrip(".")
-                    break
+        import json as _json
+        with open(wx_config, "r") as f:
+            cfg = _json.load(f)
+        WX_DATA_DIR = cfg.get("db_dir", "")
     except Exception:
         pass
-    if not WX_DATA_DIR:
+    if not WX_DATA_DIR or not os.path.isdir(WX_DATA_DIR):
         WX_DATA_DIR = os.path.expanduser("~/Documents/xwechat_files")
     if os.path.isdir(WX_DATA_DIR):
         try:
@@ -491,10 +484,15 @@ _detect_wx_attach_root()
 # 模拟人类逐群查看节奏，防止被微信检测为外挂
 # 可通过同名环境变量覆盖
 import os as _os2
-SYNC_DELAY_MIN = float(_os2.environ.get("WX_SYNC_DELAY_MIN", "0.5"))
-SYNC_DELAY_MAX = float(_os2.environ.get("WX_SYNC_DELAY_MAX", "2.0"))
+SYNC_DELAY_MIN = float(_os2.environ.get("WX_SYNC_DELAY_MIN", "3.0"))
+SYNC_DELAY_MAX = float(_os2.environ.get("WX_SYNC_DELAY_MAX", "8.0"))
 SYNC_BATCH_LIMIT = int(_os2.environ.get("WX_SYNC_BATCH_LIMIT", "200"))
 WX_MIN_INTERVAL = float(_os2.environ.get("WX_MIN_INTERVAL", "1.5"))
+WX_DAILY_CALL_LIMIT = int(_os2.environ.get("WX_DAILY_CALL_LIMIT", "200"))
+SYNC_API_TOKEN = _os2.environ.get("SYNC_API_TOKEN", "wxdashboard-sync")
+
+# 文件自动下载目录，环境变量 WX_DOWNLOAD_DIR 可覆盖
+DOWNLOAD_DIR = _os2.environ.get("WX_DOWNLOAD_DIR", os.path.join(BASE_DIR, ".Download"))
 
 # 本人微信名/邮箱关键词，提取时跳过自己的联系信息
 MY_WECHAT_NAME = _os2.environ.get("MY_WECHAT_NAME", "彭康")

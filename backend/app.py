@@ -1,11 +1,10 @@
-import threading
-import time
 import subprocess
+import threading
 import io
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from flask import Flask, render_template, request, jsonify, send_file
-from .config import TEMPLATES_DIR, STATIC_DIR, FLASK_HOST, FLASK_PORT, get_wx_file_url, get_wx_file_path
+from .config import TEMPLATES_DIR, STATIC_DIR, FLASK_HOST, FLASK_PORT, get_wx_file_url, get_wx_file_path, SYNC_API_TOKEN
 from .database import (
     init_db, get_db, get_all_groups, get_group, get_categories,
     get_messages, get_latest_messages, search_messages,
@@ -13,34 +12,11 @@ from .database import (
     set_subcategory, update_group_category, update_group_settings,
     get_summaries, get_extractions
 )
-from .sync_engine import sync_incremental, sync_all_groups_full, sync_full, get_sync_stats, discover_new_groups
+from .sync_engine import sync, get_sync_stats, SyncProgress, init_daemon
 
 app = Flask(__name__, template_folder=TEMPLATES_DIR, static_folder=STATIC_DIR)
 
-_auto_sync_thread = None
-_auto_sync_interval = 60
-_auto_sync_running = False
-_auto_sync_last_result = None
-_last_heartbeat = 0
-
-_manual_sync_running = False
-_manual_sync_result = None
-
-
-def _auto_sync_loop():
-    global _auto_sync_running, _auto_sync_last_result, _last_heartbeat
-    while _auto_sync_running:
-        time.sleep(_auto_sync_interval)
-        if not _auto_sync_running:
-            break
-        # 心跳超时(90秒)则自动停止
-        if _last_heartbeat and time.time() - _last_heartbeat > 600:
-            _auto_sync_running = False
-            break
-        try:
-            _auto_sync_last_result = sync_incremental()
-        except Exception as e:
-            _auto_sync_last_result = {"error": str(e)}
+_sync_progress = SyncProgress()
 
 
 @app.route("/")
@@ -100,45 +76,25 @@ def api_search():
 
 @app.route("/api/sync/refresh", methods=["POST"])
 def api_sync_refresh():
-    global _manual_sync_running, _manual_sync_result
-    if _manual_sync_running:
+    global _sync_progress
+    token = request.headers.get("X-Sync-Token") or request.args.get("token")
+    if token != SYNC_API_TOKEN:
+        return jsonify({"error": "未授权"}), 403
+    if _sync_progress.running:
         return jsonify({"status": "running", "message": "同步已在执行中"})
-    _manual_sync_running = True
-    _manual_sync_result = None
+    _sync_progress.reset()
     def _run():
-        global _manual_sync_running, _manual_sync_result
         try:
-            _manual_sync_result = sync_incremental()
+            result = sync(progress=_sync_progress)
         except Exception as e:
-            _manual_sync_result = {"error": str(e)}
-        finally:
-            _manual_sync_running = False
+            _sync_progress.finish({"error": str(e)})
     threading.Thread(target=_run, daemon=True).start()
     return jsonify({"status": "started"})
 
 
 @app.route("/api/sync/refresh/status")
 def api_sync_refresh_status():
-    return jsonify({
-        "running": _manual_sync_running,
-        "result": _manual_sync_result
-    })
-
-
-@app.route("/api/sync/pull-all", methods=["POST"])
-def api_sync_pull_all():
-    group_name = request.args.get("group")
-    try:
-        if group_name:
-            result = sync_full(group_name)
-            return jsonify(result)
-        else:
-            result = sync_all_groups_full()
-            return jsonify(result)
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 404
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    return jsonify(_sync_progress.to_dict())
 
 
 @app.route("/api/sync/status")
@@ -210,6 +166,16 @@ def api_check_file():
     if url:
         return jsonify({"exists": True, "url": url})
     return jsonify({"exists": False})
+
+
+@app.route("/api/files/download", methods=["POST"])
+def api_download_files():
+    """手动触发文件下载。"""
+    try:
+        stats = download_new_files()
+        return jsonify(stats)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/files/open", methods=["POST"])
@@ -389,56 +355,6 @@ def api_set_category(group_id):
     return jsonify({"ok": True, "category": cat})
 
 
-@app.route("/api/sync/discover", methods=["POST"])
-def api_sync_discover():
-    try:
-        new_groups = discover_new_groups()
-        return jsonify({"new_groups": new_groups, "count": len(new_groups)})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route("/api/heartbeat", methods=["POST"])
-def api_heartbeat():
-    global _last_heartbeat
-    _last_heartbeat = time.time()
-    return jsonify({"ok": True})
-
-
-@app.route("/api/sync/auto/status")
-def api_auto_sync_status():
-    return jsonify({
-        "running": _auto_sync_running,
-        "interval": _auto_sync_interval,
-        "last_result": _auto_sync_last_result
-    })
-
-
-@app.route("/api/sync/auto/start", methods=["POST"])
-def api_auto_sync_start():
-    global _auto_sync_thread, _auto_sync_running, _auto_sync_interval
-    data = request.get_json(silent=True) or {}
-    interval = int(data.get("interval", 60))
-    if interval < 120:
-        interval = 120
-    _auto_sync_interval = interval
-
-    if _auto_sync_running:
-        return jsonify({"running": True, "interval": _auto_sync_interval})
-
-    _auto_sync_running = True
-    _auto_sync_thread = threading.Thread(target=_auto_sync_loop, daemon=True)
-    _auto_sync_thread.start()
-    return jsonify({"running": True, "interval": _auto_sync_interval})
-
-
-@app.route("/api/sync/auto/stop", methods=["POST"])
-def api_auto_sync_stop():
-    global _auto_sync_running
-    _auto_sync_running = False
-    return jsonify({"running": False})
-
-
 @app.route("/api/export/excel")
 def api_export_excel():
     project = request.args.get("project", "Laldia")
@@ -534,5 +450,6 @@ def api_export_excel():
 
 if __name__ == "__main__":
     init_db()
+    init_daemon()
     print(f"Laldia 微信群台账启动: http://{FLASK_HOST}:{FLASK_PORT}")
     app.run(host=FLASK_HOST, port=FLASK_PORT, debug=True)
