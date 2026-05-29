@@ -8,7 +8,7 @@ from .database import (
     get_db, upsert_message, upsert_group, update_group_stats, add_sync_log,
     get_all_group_names, get_message_count
 )
-from .safe_wx import ensure_daemon, safe_export_sessions, safe_get_members, safe_new_messages, safe_history
+from .safe_wx import ensure_daemon, safe_export_sessions, safe_get_members, safe_new_messages, safe_history, stop_daemon
 
 
 class SyncProgress:
@@ -110,6 +110,7 @@ SKIP_KEYWORDS = ["通威", "364mw"]
 SUBCATEGORY_RULES = [
     (["护舷", "天盾", "泰鸿", "特瑞堡", "fender", "橡胶"], "护舷"),
     (["管桩", "建华", "裕大", "pipe"], "管桩"),
+    (["钢管", "steel pipe"], "钢管"),
     (["管道", "中财", "狼博", "日丰", "伟星", "lesso"], "管道"),
     (["桩基", "中岩", "岩土", "地基"], "桩基/地基"),
     (["钢结构", "钢构", "oriental castle", "中冶"], "钢结构"),
@@ -177,7 +178,7 @@ def _human_delay(reason_hint="", progress=None):
 
 
 def init_daemon():
-    """Start daemon at app startup. Caches success to skip future checks."""
+    """Start daemon at sync start. Caches success to skip future checks."""
     global _safe_mode_available
     if _safe_mode_available:
         return True, "cached"
@@ -185,9 +186,7 @@ def init_daemon():
     ok, msg = ensure_daemon()
     _safe_mode_available = ok
     if not ok:
-        print(f"[app] daemon 未就绪 — 微信可能未启动 ({msg})")
-    else:
-        print(f"[app] daemon 已就绪: {msg}")
+        print(f"[sync] daemon 未就绪 ({msg})")
     return ok, msg
 
 
@@ -266,104 +265,110 @@ def sync(progress=None):
         for kw in keywords:
             project_keywords.append(kw)
 
-    # Step 1: discover new groups
-    if progress:
-        progress.set_phase("discovering")
-        progress.add_log("正在扫描会话列表，发现新群...")
-    new_groups = []
     try:
-        for name, cat, sub, proj in _discover_new_groups(progress=progress):
-            new_groups.append((name, cat, sub, proj))
-            stats["new_groups_discovered"].append({"name": name, "category": cat, "project": proj})
-    except Exception as e:
-        stats["errors"].append(f"discover: {str(e)}")
+        # Step 1: discover new groups
         if progress:
-            progress.add_error(str(e))
-
-    # Step 2: full sync for newly discovered groups
-    if new_groups:
-        if progress:
-            progress.set_phase("syncing_new", total_groups=len(new_groups))
-            progress.add_log(f"发现 {len(new_groups)} 个新群，开始全量同步")
-        for i, (name, _, _, _) in enumerate(new_groups):
+            progress.set_phase("discovering")
+            progress.add_log("正在扫描会话列表，发现新群...")
+        new_groups = []
+        try:
+            for name, cat, sub, proj in _discover_new_groups(progress=progress):
+                new_groups.append((name, cat, sub, proj))
+                stats["new_groups_discovered"].append({"name": name, "category": cat, "project": proj})
+        except Exception as e:
+            stats["errors"].append(f"discover: {str(e)}")
             if progress:
-                progress.step_group(name, i + 1)
-            _human_delay(f"新群全量同步: {name}", progress=progress)
+                progress.add_error(str(e))
+
+        # Step 2: full sync for newly discovered groups
+        if new_groups:
+            if progress:
+                progress.set_phase("syncing_new", total_groups=len(new_groups))
+                progress.add_log(f"发现 {len(new_groups)} 个新群，开始全量同步")
+            for i, (name, _, _, _) in enumerate(new_groups):
+                if progress:
+                    progress.step_group(name, i + 1)
+                _human_delay(f"新群全量同步: {name}", progress=progress)
+                try:
+                    messages = _pull_group_messages(name, limit=500)
+                    r = _store_group_messages(name, messages)
+                    stats["messages_new"] += r["new"]
+                    if r["new"] > 0:
+                        stats["groups_updated"] += 1
+                    if progress:
+                        progress.add_log(f"{name}: +{r['new']} 条消息")
+                except Exception as e:
+                    stats["errors"].append(f"{name}: {str(e)}")
+                    if progress:
+                        progress.add_error(f"{name}: {str(e)}")
+
+        # Step 3: incremental sync via wx new-messages (single call, all chats)
+        if progress:
+            progress.set_phase("syncing")
+            progress.add_log("拉取增量消息 (wx new-messages)...")
+        try:
+            all_new = safe_new_messages(limit=500)
+            if progress:
+                progress.add_log(f"收到 {len(all_new)} 条新消息")
+        except Exception as e:
+            all_new = []
+            stats["errors"].append(f"new-messages: {str(e)}")
+            if progress:
+                progress.add_error(str(e))
+
+        grouped = {}
+        for msg in all_new:
+            chat_name = msg.get("chat", "")
+            if msg.get("chat_type") != "group":
+                continue
+            if not any(kw in chat_name.lower() for kw in project_keywords):
+                continue
+            if any(sk in chat_name.lower() for sk in SKIP_KEYWORDS):
+                continue
+            grouped.setdefault(chat_name, []).append(msg)
+
+        group_names = list(grouped.keys())
+        if progress:
+            progress.set_phase("syncing", total_groups=len(group_names))
+            progress.add_log(f"增量同步 {len(group_names)} 个群 ({len(all_new)} 条消息)")
+
+        for idx, gname in enumerate(group_names, 1):
+            msgs = grouped[gname]
+            if progress:
+                progress.step_group(gname, idx)
             try:
-                messages = _pull_group_messages(name, limit=500)
-                r = _store_group_messages(name, messages)
+                r = _store_group_messages(gname, msgs)
                 stats["messages_new"] += r["new"]
                 if r["new"] > 0:
                     stats["groups_updated"] += 1
                 if progress:
-                    progress.add_log(f"{name}: +{r['new']} 条消息")
+                    progress.add_log(f"{gname}: +{r['new']} 条")
             except Exception as e:
-                stats["errors"].append(f"{name}: {str(e)}")
+                stats["errors"].append(f"{gname}: {str(e)}")
                 if progress:
-                    progress.add_error(f"{name}: {str(e)}")
+                    progress.add_error(f"{gname}: {str(e)}")
 
-    # Step 3: incremental sync via wx new-messages (single call, all chats)
-    if progress:
-        progress.set_phase("syncing")
-        progress.add_log("拉取增量消息 (wx new-messages)...")
-    try:
-        all_new = safe_new_messages(limit=500)
+        # Step 4: download new files
         if progress:
-            progress.add_log(f"收到 {len(all_new)} 条新消息")
-    except Exception as e:
-        all_new = []
-        stats["errors"].append(f"new-messages: {str(e)}")
-        if progress:
-            progress.add_error(str(e))
-
-    grouped = {}
-    for msg in all_new:
-        chat_name = msg.get("chat", "")
-        if msg.get("chat_type") != "group":
-            continue
-        if not any(kw in chat_name.lower() for kw in project_keywords):
-            continue
-        if any(sk in chat_name.lower() for sk in SKIP_KEYWORDS):
-            continue
-        grouped.setdefault(chat_name, []).append(msg)
-
-    group_names = list(grouped.keys())
-    if progress:
-        progress.set_phase("syncing", total_groups=len(group_names))
-        progress.add_log(f"增量同步 {len(group_names)} 个群 ({len(all_new)} 条消息)")
-
-    for idx, gname in enumerate(group_names, 1):
-        msgs = grouped[gname]
-        if progress:
-            progress.step_group(gname, idx)
+            progress.set_phase("files")
+            progress.add_log("检查新文件...")
         try:
-            r = _store_group_messages(gname, msgs)
-            stats["messages_new"] += r["new"]
-            if r["new"] > 0:
-                stats["groups_updated"] += 1
-            if progress:
-                progress.add_log(f"{gname}: +{r['new']} 条")
+            file_stats = download_new_files()
+            stats["files_downloaded"] = file_stats.get("downloaded", 0)
+            if progress and stats["files_downloaded"] > 0:
+                progress.add_log(f"下载了 {stats['files_downloaded']} 个新文件")
         except Exception as e:
-            stats["errors"].append(f"{gname}: {str(e)}")
+            stats["errors"].append(f"download_files: {str(e)}")
             if progress:
-                progress.add_error(f"{gname}: {str(e)}")
+                progress.add_error(str(e))
 
-    # Step 4: download new files
-    if progress:
-        progress.set_phase("files")
-        progress.add_log("检查新文件...")
-    try:
-        file_stats = download_new_files()
-        stats["files_downloaded"] = file_stats.get("downloaded", 0)
-        if progress and stats["files_downloaded"] > 0:
-            progress.add_log(f"下载了 {stats['files_downloaded']} 个新文件")
-    except Exception as e:
-        stats["errors"].append(f"download_files: {str(e)}")
-        if progress:
-            progress.add_error(str(e))
+        add_sync_log("全部群组", None, 0, stats["messages_new"],
+                      "ok" if not stats["errors"] else f"部分错误: {len(stats['errors'])}个群")
 
-    add_sync_log("全部群组", None, 0, stats["messages_new"],
-                  "ok" if not stats["errors"] else f"部分错误: {len(stats['errors'])}个群")
+    finally:
+        global _safe_mode_available
+        stop_daemon()
+        _safe_mode_available = False
 
     if progress:
         progress.finish(stats)

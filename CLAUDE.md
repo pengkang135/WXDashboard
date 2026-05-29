@@ -77,6 +77,10 @@ WXDashboard/
 │   └── favicon.svg         # SVG 图标
 ├── templates/
 │   └── dashboard.html      # 主页面模板
+├── scripts/                 # 守护与运维脚本
+│   ├── wx_guardian.ps1         # wx-cli 进程守护（每2分钟清理残留）
+│   ├── wx_guardian_silent.py   # 无窗口 Python 封装
+│   └── register_wx_guardian.ps1 # 注册 Windows 计划任务
 ├── data/                    # SQLite 数据库(自动创建)
 ├── .originfiles/            # 临时/原始文件(不上传仓库)
 ├── requirements.txt
@@ -160,6 +164,22 @@ WXDashboard/
 - **群间延迟**: 同步不同群之间随机延迟 3-8 秒（`SYNC_DELAY_MIN/MAX`）
 - **批量限制**: 单次拉取最多 200 条消息（`SYNC_BATCH_LIMIT`），全量同步最多 500 条
 - **禁止并行**: 任何时候不得并行调用 wx-cli
+
+### wxGuardian 守护任务（启动必检）
+
+防止 wx-cli daemon 未正常关闭导致微信反作弊检测。Windows 计划任务 `\OpenClaw\wxGuardian` 每 2 分钟扫描并终止运行超过 3 分钟的 wx-cli 进程。
+
+**每次项目启动时必须检查守护任务是否已注册且启用：**
+
+```powershell
+# 检查守护任务状态
+schtasks /query /tn "\OpenClaw\wxGuardian" 2>nul
+
+# 如果任务不存在或已禁用，执行注册
+powershell -ExecutionPolicy Bypass -File scripts\register_wx_guardian.ps1
+```
+
+守护脚本位于项目内 `scripts/` 目录，受 Git 版本控制。任务使用项目自有 `.venv\Scripts\pythonw.exe` 运行，不依赖外部 Python。
 
 ### AI 处理规范
 

@@ -12,7 +12,7 @@ from .database import (
     set_subcategory, update_group_category, update_group_settings,
     get_summaries, get_extractions
 )
-from .sync_engine import sync, get_sync_stats, SyncProgress, init_daemon
+from .sync_engine import sync, get_sync_stats, SyncProgress
 
 app = Flask(__name__, template_folder=TEMPLATES_DIR, static_folder=STATIC_DIR)
 
@@ -450,6 +450,5 @@ def api_export_excel():
 
 if __name__ == "__main__":
     init_db()
-    init_daemon()
     print(f"Laldia 微信群台账启动: http://{FLASK_HOST}:{FLASK_PORT}")
     app.run(host=FLASK_HOST, port=FLASK_PORT, debug=True)

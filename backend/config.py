@@ -36,15 +36,25 @@ def _detect_wx_data_dir():
         pass
     if not WX_DATA_DIR or not os.path.isdir(WX_DATA_DIR):
         WX_DATA_DIR = os.path.expanduser("~/Documents/xwechat_files")
-    if os.path.isdir(WX_DATA_DIR):
+    for search_dir in (WX_DATA_DIR, os.path.dirname(WX_DATA_DIR)):
+        if not os.path.isdir(search_dir):
+            continue
+        # Check if msg/file exists directly under search_dir
+        direct = os.path.join(search_dir, "msg", "file")
+        if os.path.isdir(direct):
+            _WX_FILE_ROOT = direct
+            break
+        # Check for hash directories (each containing msg/file)
         try:
-            for entry in os.listdir(WX_DATA_DIR):
-                candidate = os.path.join(WX_DATA_DIR, entry)
-                if os.path.isdir(candidate) and os.path.isdir(os.path.join(candidate, "msg", "file")):
-                    _WX_FILE_ROOT = os.path.join(candidate, "msg", "file")
+            for entry in os.listdir(search_dir):
+                candidate = os.path.join(search_dir, entry, "msg", "file")
+                if os.path.isdir(candidate):
+                    _WX_FILE_ROOT = candidate
                     break
         except OSError:
             pass
+        if _WX_FILE_ROOT:
+            break
 
 
 def get_wx_file_url(msg_date, filename):

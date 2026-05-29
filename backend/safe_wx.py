@@ -160,6 +160,15 @@ def ensure_daemon():
     return False, "daemon not running (WeChat may not be open)"
 
 
+def stop_daemon():
+    """Stop daemon after sync to avoid WeChat anti-cheat detection."""
+    try:
+        _run_wx_raw(["daemon", "stop"], timeout=10)
+        return True
+    except Exception:
+        return False
+
+
 def safe_new_messages(limit=500):
     """通过 wx new-messages 获取全量增量消息。单次调用，跨全部会话。"""
     out = _run_wx_raw(["new-messages", "--json", "-n", str(limit)], timeout=120)

@@ -303,8 +303,8 @@
   <p class="subtitle">sync_engine.py — 数据采集的完整执行链路</p>
 
   <!-- Precondition -->
-  <div style="text-align:center; margin-bottom:20px; padding:10px 20px; background:var(--green-light); border:1px solid var(--green); border-radius:var(--radius); font-size:0.85rem; color:var(--green)">
-    前置条件：daemon 已就绪 — Flask 启动时通过 <code>init_daemon()</code> 初始化并缓存，sync 仅做缓存检查
+  <div style="text-align:center; margin-bottom:20px; padding:10px 20px; background:var(--red-light); border:1px solid var(--red); border-radius:var(--radius); font-size:0.85rem; color:var(--red)">
+    前置条件：微信已运行。daemon 随 sync() 按需启停 — sync 入口 start_daemon() 触发，sync 出口 (finally) stop_daemon() 强制杀死。离开 sync 后零 wx-cli 进程存活。
   </div>
 
   <div class="flow">
@@ -415,8 +415,29 @@
       <div style="flex:1"></div>
     </div>
 
-    <!-- Phase 5: Done -->
-    <div class="phase-label">PHASE 5 · done</div>
+    <!-- Phase 5: Files done, daemon cleanup -->
+    <div class="phase-label">PHASE 5 · cleanup</div>
+    <div class="node-row">
+      <div class="connector"><div class="connector-line"></div></div>
+      <div class="node" style="border-color:var(--red); border-left: 3px solid var(--red);">
+        <div class="node-header">
+          <div class="node-icon icon-red">&#10007;</div>
+          <div class="node-title">杀死 daemon 进程 (finally 块保证执行)</div>
+        </div>
+        <div class="node-desc">stop_daemon() → wx daemon stop 强制终止 daemon 进程。_safe_mode_available = False 重置缓存。无论正常/异常都执行，确保离开 sync 后零 wx-cli 进程存活。</div>
+        <div class="node-code">try: ... finally: stop_daemon(); _safe_mode_available = False</div>
+        <span class="node-tag tag-red">防止封号: 强制杀进程</span>
+      </div>
+    </div>
+
+    <!-- Connector -->
+    <div class="node-row">
+      <div class="connector"><div class="connector-line"></div></div>
+      <div style="flex:1"></div>
+    </div>
+
+    <!-- Phase 6: Done -->
+    <div class="phase-label">PHASE 6 · done</div>
     <div class="node-row">
       <div class="connector">
         <div class="connector-dot" style="background:var(--green)"></div>
@@ -424,9 +445,9 @@
       <div class="node" style="border-color:var(--green)">
         <div class="node-header">
           <div class="node-icon icon-green">&#10003;</div>
-          <div class="node-title">同步完成 - 返回统计结果</div>
+          <div class="node-title">同步完成 - 零 wx-cli 进程存活</div>
         </div>
-        <div class="node-desc">合并各阶段统计（新群数、新增消息数、更新群数、下载文件数），写入 sync_log 审计日志。前端轮询检测到 running=false 后展示结果摘要并刷新视图</div>
+        <div class="node-desc">合并各阶段统计（新群数、新增消息数、更新群数、下载文件数），写入 sync_log 审计日志。所有 wx-cli 进程（daemon + 子进程）已全部退出，仅 Flask 留存。前端轮询检测到 running=false 后展示结果摘要并刷新视图</div>
         <div class="node-code">stats → add_sync_log() → progress.finish() → 前端 refreshCurrentView()</div>
         <span class="node-tag tag-green">audit logged</span>
       </div>
@@ -466,8 +487,8 @@
       <div class="stat-label">每日调用上限</div>
     </div>
     <div class="stat-card">
-      <div class="stat-value">5</div>
-      <div class="stat-label">同步阶段数</div>
+      <div class="stat-value">6</div>
+      <div class="stat-label">同步阶段数 (含 cleanup)</div>
     </div>
   </div>
 

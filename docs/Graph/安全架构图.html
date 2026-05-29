@@ -4,62 +4,97 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>WXDashboard 安全架构图</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #0d1117;
-    --surface: #161b22;
-    --border: #30363d;
-    --text: #c9d1d9;
-    --text-dim: #8b949e;
-    --red: #f85149;
-    --orange: #d2991d;
-    --yellow: #e3b341;
-    --green: #3fb950;
-    --blue: #58a6ff;
-    --purple: #bc8cff;
-    --cyan: #39d2c0;
-  }
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', sans-serif;
-    padding: 40px 24px;
-    line-height: 1.6;
-  }
-  h1 {
-    text-align: center;
-    font-size: 1.8em;
-    margin-bottom: 8px;
-    color: #fff;
-  }
-  .subtitle {
-    text-align: center;
-    color: var(--text-dim);
-    font-size: 0.9em;
-    margin-bottom: 40px;
+    --paper: #faf8f5;
+    --surface: #ffffff;
+    --ink: #1a1c1e;
+    --ink-dim: #5f6368;
+    --ink-faint: #93989f;
+    --border: #e2e0db;
+    --border-strong: #cdc9c1;
+
+    --red: #d93b2e;
+    --red-bg: #fef5f4;
+    --red-border: #fcd9d6;
+    --orange: #b45309;
+    --orange-bg: #fffbf5;
+    --orange-border: #fde8cc;
+    --green: #0d7d6e;
+    --green-bg: #f3faf8;
+    --green-border: #c5ece3;
+    --blue: #2563eb;
+    --blue-bg: #f5f8ff;
+    --blue-border: #d1ddfc;
+    --purple: #7c3aed;
+    --purple-bg: #faf7ff;
+    --purple-border: #e4d9fc;
+    --cyan: #0891b2;
+    --cyan-bg: #f4fbfd;
+    --cyan-border: #c5eaf2;
+
+    --radius: 8px;
+    --shadow: 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-hover: 0 2px 8px rgba(0,0,0,0.06);
   }
 
-  .diagram {
-    max-width: 1200px;
-    margin: 0 auto;
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'DM Sans', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    padding: 48px 24px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
   }
+
+  h1 {
+    text-align: center;
+    font-family: 'DM Serif Display', 'Noto Serif SC', 'Source Han Serif SC', serif;
+    font-size: 2rem;
+    font-weight: 400;
+    letter-spacing: -0.02em;
+    margin-bottom: 4px;
+    color: var(--ink);
+  }
+  h1 span { font-style: italic; color: var(--blue); }
+
+  .subtitle {
+    text-align: center;
+    color: var(--ink-dim);
+    font-size: 0.85rem;
+    margin-bottom: 40px;
+    letter-spacing: 0.02em;
+  }
+
+  .diagram { max-width: 1200px; margin: 0 auto; }
 
   /* Layer sections */
   .layer {
-    margin-bottom: 32px;
+    margin-bottom: 28px;
+    background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 12px;
+    border-radius: var(--radius);
     overflow: hidden;
+    box-shadow: var(--shadow);
+    transition: box-shadow 0.2s;
   }
+  .layer:hover { box-shadow: var(--shadow-hover); }
+
   .layer-header {
     padding: 12px 20px;
-    font-weight: 700;
-    font-size: 0.85em;
-    letter-spacing: 0.5px;
+    font-weight: 600;
+    font-size: 0.82rem;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
     display: flex;
     align-items: center;
     gap: 10px;
+    border-bottom: 1px solid var(--border);
   }
   .layer-body {
     padding: 20px;
@@ -69,197 +104,229 @@
   }
 
   /* Color-coded layers */
-  .layer-danger  .layer-header { background: #f8514922; color: var(--red); }
-  .layer-danger  { border-color: #f8514944; }
-  .layer-warn   .layer-header { background: #d2991d22; color: var(--orange); }
-  .layer-warn   { border-color: #d2991d44; }
-  .layer-safe   .layer-header { background: #3fb95022; color: var(--green); }
-  .layer-safe   { border-color: #3fb95044; }
-  .layer-info   .layer-header { background: #58a6ff22; color: var(--blue); }
-  .layer-info   { border-color: #58a6ff44; }
-  .layer-def    .layer-header { background: #bc8cff22; color: var(--purple); }
-  .layer-def    { border-color: #bc8cff44; }
+  .layer-danger  .layer-header { background: var(--red-bg); color: var(--red); border-bottom-color: var(--red-border); }
+  .layer-danger  { border-left: 3px solid var(--red); }
+  .layer-warn   .layer-header { background: var(--orange-bg); color: var(--orange); border-bottom-color: var(--orange-border); }
+  .layer-warn   { border-left: 3px solid var(--orange); }
+  .layer-safe   .layer-header { background: var(--green-bg); color: var(--green); border-bottom-color: var(--green-border); }
+  .layer-safe   { border-left: 3px solid var(--green); }
+  .layer-info   .layer-header { background: var(--blue-bg); color: var(--blue); border-bottom-color: var(--blue-border); }
+  .layer-info   { border-left: 3px solid var(--blue); }
+  .layer-def    .layer-header { background: var(--purple-bg); color: var(--purple); border-bottom-color: var(--purple-border); }
+  .layer-def    { border-left: 3px solid var(--purple); }
+
+  .layer-header .layer-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    font-weight: 500;
+    opacity: 0.7;
+  }
 
   /* Component cards */
   .component {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: 6px;
     padding: 14px 18px;
     min-width: 180px;
     flex: 1;
-    position: relative;
   }
   .component.wide { flex: 2; min-width: 320px; }
+
   .comp-name {
-    font-weight: 700;
-    font-size: 1em;
-    margin-bottom: 4px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    margin-bottom: 2px;
     display: flex;
     align-items: center;
     gap: 8px;
+    color: var(--ink);
   }
   .comp-path {
-    font-size: 0.78em;
-    color: var(--text-dim);
-    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    font-size: 0.76rem;
+    color: var(--ink-faint);
+    font-family: 'JetBrains Mono', 'Cascadia Code', 'Consolas', monospace;
     margin-bottom: 8px;
+    line-height: 1.5;
   }
   .comp-desc {
-    font-size: 0.82em;
-    color: var(--text-dim);
+    font-size: 0.8rem;
+    color: var(--ink-dim);
     margin-bottom: 6px;
+    line-height: 1.55;
   }
 
   /* Badges */
   .badge {
     display: inline-block;
     padding: 2px 8px;
-    border-radius: 12px;
-    font-size: 0.7em;
-    font-weight: 700;
+    border-radius: 10px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
   }
-  .badge-danger  { background: #f8514922; color: var(--red); }
-  .badge-warn    { background: #d2991d22; color: var(--orange); }
-  .badge-safe    { background: #3fb95022; color: var(--green); }
-  .badge-info    { background: #58a6ff22; color: var(--blue); }
+  .badge-danger { background: var(--red-bg); color: var(--red); }
+  .badge-warn   { background: var(--orange-bg); color: var(--orange); }
+  .badge-safe   { background: var(--green-bg); color: var(--green); }
+  .badge-info   { background: var(--blue-bg); color: var(--blue); }
 
-  /* Tags on components */
+  /* Tags */
   .tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
   .tag {
-    font-size: 0.7em;
-    padding: 2px 6px;
+    font-size: 0.7rem;
+    padding: 2px 7px;
     border-radius: 4px;
-    background: var(--surface);
-    border: 1px solid var(--border);
+    font-weight: 500;
   }
-  .tag.risk-high   { border-color: var(--red); color: var(--red); }
-  .tag.risk-medium { border-color: var(--orange); color: var(--orange); }
-  .tag.risk-low    { border-color: var(--yellow); color: var(--yellow); }
-  .tag.defense     { border-color: var(--purple); color: var(--purple); }
+  .tag.risk-high   { background: var(--red-bg); color: var(--red); border: 1px solid var(--red-border); }
+  .tag.risk-medium { background: var(--orange-bg); color: var(--orange); border: 1px solid var(--orange-border); }
+  .tag.risk-low    { background: #fffdf7; color: #94760a; border: 1px solid #f5e6b8; }
+  .tag.defense     { background: var(--purple-bg); color: var(--purple); border: 1px solid var(--purple-border); }
+  .tag.safe        { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border); }
 
-  /* Arrows between layers */
+  /* Arrows */
   .flow-arrows {
     display: flex;
+    align-items: center;
     justify-content: center;
-    gap: 40px;
-    padding: 8px 0;
-    font-size: 1.4em;
-    color: var(--text-dim);
+    gap: 12px;
+    padding: 10px 0;
+    font-size: 0.78rem;
+    color: var(--ink-faint);
+    font-family: 'JetBrains Mono', monospace;
+    letter-spacing: 0.02em;
+  }
+  .flow-arrows::before,
+  .flow-arrows::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+    max-width: 60px;
+  }
+  .flow-arrows::before { margin-right: 8px; }
+  .flow-arrows::after  { margin-left: 8px; }
+
+  .arrow-icon {
+    color: var(--ink-faint);
+    font-size: 1rem;
   }
 
-  /* Attack surface annotations */
+  /* Annotations */
   .attack-vector {
-    background: #f851490d;
-    border: 1px dashed #f8514955;
+    background: var(--red-bg);
+    border: 1px solid var(--red-border);
     border-radius: 6px;
     padding: 10px 14px;
     margin-top: 12px;
-    font-size: 0.8em;
+    font-size: 0.78rem;
   }
   .attack-vector .av-title {
-    font-weight: 700;
+    font-weight: 600;
     color: var(--red);
     margin-bottom: 4px;
+    font-size: 0.8rem;
   }
   .attack-vector .av-desc {
-    color: var(--text-dim);
+    color: var(--ink-dim);
+    font-size: 0.76rem;
   }
 
-  /* Defense annotations */
   .defense-mech {
-    background: #bc8cff0d;
-    border: 1px dashed #bc8cff55;
+    background: var(--purple-bg);
+    border: 1px solid var(--purple-border);
     border-radius: 6px;
     padding: 10px 14px;
     margin-top: 12px;
-    font-size: 0.8em;
+    font-size: 0.78rem;
   }
   .defense-mech .dm-title {
-    font-weight: 700;
+    font-weight: 600;
     color: var(--purple);
     margin-bottom: 4px;
+    font-size: 0.8rem;
   }
   .defense-mech .dm-desc {
-    color: var(--text-dim);
+    color: var(--ink-dim);
+    font-size: 0.76rem;
   }
 
-  /* Legend */
-  .legend {
-    max-width: 1200px;
-    margin: 40px auto 0;
-    padding: 20px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 20px;
-    font-size: 0.82em;
-  }
-  .legend-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  /* Stats section */
+  /* Stats */
   .stats {
     max-width: 1200px;
-    margin: 24px auto;
+    margin: 0 auto 36px;
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 16px;
+    gap: 14px;
   }
   .stat-card {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 16px;
+    border-radius: var(--radius);
+    padding: 18px 20px;
     text-align: center;
+    box-shadow: var(--shadow);
   }
   .stat-value {
-    font-size: 2em;
-    font-weight: 700;
+    font-family: 'DM Serif Display', serif;
+    font-size: 2.2rem;
+    font-weight: 400;
+    line-height: 1;
+    margin-bottom: 4px;
   }
   .stat-label {
-    font-size: 0.8em;
-    color: var(--text-dim);
-    margin-top: 4px;
+    font-size: 0.78rem;
+    color: var(--ink-dim);
+    font-weight: 500;
   }
   .stat-value.red    { color: var(--red); }
   .stat-value.orange { color: var(--orange); }
   .stat-value.green  { color: var(--green); }
   .stat-value.blue   { color: var(--blue); }
 
-  /* Timeline */
+  /* Call flow */
   .call-flow {
     max-width: 1200px;
-    margin: 32px auto;
-    padding: 24px;
+    margin: 36px auto;
+    padding: 24px 28px;
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 12px;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
   }
   .call-flow h3 {
-    margin-bottom: 16px;
-    font-size: 1em;
+    margin-bottom: 18px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--ink);
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
+  .call-flow h3::before {
+    content: '';
+    display: inline-block;
+    width: 3px;
+    height: 16px;
+    background: var(--blue);
+    border-radius: 2px;
+  }
+
   .call-step {
     display: flex;
     align-items: flex-start;
-    gap: 12px;
-    padding: 8px 0;
+    gap: 14px;
+    padding: 9px 0;
     border-left: 2px solid var(--border);
     margin-left: 8px;
-    padding-left: 20px;
+    padding-left: 22px;
     position: relative;
   }
   .call-step::before {
     content: '';
     position: absolute;
     left: -5px;
-    top: 14px;
+    top: 15px;
     width: 8px;
     height: 8px;
     border-radius: 50%;
@@ -267,26 +334,52 @@
   }
   .call-step.risk::before { background: var(--red); }
   .call-step .step-time {
-    font-size: 0.78em;
-    color: var(--text-dim);
+    font-size: 0.76rem;
+    color: var(--ink-faint);
     white-space: nowrap;
-    min-width: 60px;
+    min-width: 70px;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 500;
   }
   .call-step .step-cmd {
-    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
-    font-size: 0.82em;
+    font-family: 'JetBrains Mono', 'Cascadia Code', 'Consolas', monospace;
+    font-size: 0.8rem;
+    color: var(--ink);
+  }
+
+  /* Legend */
+  .legend {
+    max-width: 1200px;
+    margin: 40px auto 0;
+    padding: 20px 24px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    font-size: 0.8rem;
+    color: var(--ink-dim);
+    box-shadow: var(--shadow);
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
 
   @media (max-width: 768px) {
     .layer-body { flex-direction: column; }
     .component { min-width: auto; }
+    .component.wide { min-width: auto; }
+    .stats { grid-template-columns: 1fr 1fr; }
   }
 </style>
 </head>
 <body>
 
-<h1>WXDashboard 安全架构图</h1>
-<p class="subtitle">微信交互全链路 — 攻击面标记 — 防御层标注 | 2026-05-25</p>
+<h1>WXDashboard <span>安全架构图</span></h1>
+<p class="subtitle">微信交互全链路 &middot; 攻击面标记 &middot; 防御层标注 &middot; 进程生命周期 &middot; 2026-05-27</p>
 
 <!-- Risk Stats -->
 <div class="stats">
@@ -295,12 +388,12 @@
     <div class="stat-label">历史封号次数</div>
   </div>
   <div class="stat-card">
-    <div class="stat-value orange">~12</div>
-    <div class="stat-label">单次同步 wx-cli 调用量 (30群)</div>
+    <div class="stat-value orange">~7</div>
+    <div class="stat-label">单次同步 wx 子进程数 (30群)</div>
   </div>
   <div class="stat-card">
-    <div class="stat-value blue">5</div>
-    <div class="stat-label">防御层级</div>
+    <div class="stat-value blue">1</div>
+    <div class="stat-label">持久进程 (仅 Flask)</div>
   </div>
   <div class="stat-card">
     <div class="stat-value green">1</div>
@@ -310,32 +403,32 @@
 
 <div class="diagram">
 
-  <!-- ===== LAYER 0: WeChat Process ===== -->
+  <!-- ===== LAYER 0 ===== -->
   <div class="layer layer-danger">
     <div class="layer-header">
-      <span>LAYER 0</span> | 微信进程 (不可控)
+      <span class="layer-num">L0</span> 微信进程 — 不可控
     </div>
     <div class="layer-body">
       <div class="component">
         <div class="comp-name">Weixin.exe</div>
-        <div class="comp-desc">微信主进程。持有 SQLCipher 密钥在内存中。本项目代码不可控。</div>
+        <div class="comp-desc">微信主进程，SQLCipher 密钥存于内存。本项目不可控。</div>
         <div class="tags">
-          <span class="tag risk-high">高敏: SQLCipher密钥</span>
+          <span class="tag risk-high">高敏: SQLCipher 密钥</span>
           <span class="tag risk-high">反作弊系统监控</span>
         </div>
       </div>
       <div class="component">
         <div class="comp-name">MSG.db (加密)</div>
         <div class="comp-path">%USERPROFILE%/Documents/xwechat_files/*/db/</div>
-        <div class="comp-desc">微信 SQLCipher 加密消息数据库。本项目代码<strong>永远不直接访问</strong>此文件。</div>
+        <div class="comp-desc">加密消息数据库。<strong>本项目永远不直接访问此文件。</strong></div>
         <div class="tags">
           <span class="tag defense">禁止直接访问</span>
         </div>
       </div>
       <div class="component">
-        <div class="comp-name">Msg/File &amp; Attach 目录</div>
+        <div class="comp-name">Msg/File &amp; Attach</div>
         <div class="comp-path">xwechat_files/*/msg/file/<br>xwechat_files/*/msg/attach/</div>
-        <div class="comp-desc">文件只读拷贝 (.Download/)。图片通过 .dat 解密仅限本地查看。</div>
+        <div class="comp-desc">文件只读拷贝 (.Download/)。图片 .dat 解密仅限本地查看。</div>
         <div class="tags">
           <span class="tag risk-medium">图片解密涉及内存扫描</span>
         </div>
@@ -343,53 +436,72 @@
     </div>
   </div>
 
-  <div class="flow-arrows">&#x25BC; Named Pipe: \\.\pipe\wx-cli-daemon &#x25BC;</div>
+  <div class="flow-arrows"><span class="arrow-icon">&#8595;</span> Named Pipe: \\.\pipe\wx-cli-daemon <span class="arrow-icon">&#8595;</span></div>
 
-  <!-- ===== LAYER 1: wx-cli Daemon ===== -->
+  <!-- ===== LAYER 1 ===== -->
   <div class="layer layer-warn">
     <div class="layer-header">
-      <span>LAYER 1</span> | wx-cli Daemon (npm 全局包) — 唯一与微信进程交互的组件
+      <span class="layer-num">L1</span> wx-cli Daemon (npm) — 按 需 启 停 &middot; 同步结束必须退出
     </div>
     <div class="layer-body">
       <div class="component wide">
         <div class="comp-name">
           wx-cli daemon
-          <span class="badge badge-warn">有限可控</span>
+          <span class="badge badge-warn">按需启停</span>
         </div>
-        <div class="comp-path">npm: @jackwener/wx-cli (全局安装)</div>
+        <div class="comp-path">npm: @jackwener/wx-cli (全局安装) | Named Pipe: \\.\pipe\wx-cli-daemon</div>
         <div class="comp-desc">
-          启动时从微信进程内存提取 SQLCipher 密钥<strong>一次</strong>，缓存在 daemon 进程内。
-          后续所有查询使用缓存密钥，不再接触微信进程。<br>
-          通过 Named Pipe 与 CLI 通信。Python 端通过 subprocess 调用 wx 命令。
+          sync() 开始时通过 <code>init_daemon()</code> 触发 <strong>attach 微信进程提取 SQLCipher 密钥</strong>，
+          缓存在 daemon 进程内存。所有 wx 子进程通过 Named Pipe 连接它查询数据。
+          <strong>sync() 结束前必须调用 stop_daemon() 杀死 daemon 进程</strong>，
+          避免微信反作弊系统检测到异常进程而强制封号。
         </div>
         <div class="tags">
-          <span class="tag defense">密钥仅存在于daemon</span>
-          <span class="tag risk-medium">启动时需attach微信进程</span>
+          <span class="tag defense">密钥仅存在于 daemon 进程</span>
+          <span class="tag defense">sync 结束即退出 (stop_daemon)</span>
+          <span class="tag risk-high">sync 期间 attach 微信进程</span>
+        </div>
+        <div class="attack-vector">
+          <div class="av-title">封号风险: daemon 进程持续运行</div>
+          <div class="av-desc">已两次因 wx-cli 进程被微信强制下线。daemon 必须在 sync 完成后立即退出。</div>
         </div>
       </div>
       <div class="component">
-        <div class="comp-name">wx daemon status (含自动启动)</div>
-        <div class="comp-path">safe_wx.py:106 (is_daemon_running) / safe_wx.py:114 (start_daemon)</div>
+        <div class="comp-name">wx 子进程 (一次性)</div>
+        <div class="comp-path">subprocess: wx sessions / wx history / wx new-messages</div>
         <div class="comp-desc">
-          检查守护进程状态 — 同时也是 daemon 的隐式启动触发器。<br>
-          wx-daemon <strong>没有独立的 start 子命令</strong>；首次调用任何 wx 命令时自动 attach 微信进程提取密钥。<br>
-          <code>start_daemon()</code> 通过两次 status 调用实现: 第一次触发自动启动, 第二次验证就绪。
+          每次 <code>_run_wx_raw()</code> 调用 spawn 一个 <strong>短暂子进程</strong>:
+          <strong>启动 → Named Pipe 连接 daemon → 获取结果 → 退出</strong>。
+          单个子进程存活约 1-2 秒。同步期间按顺序产生多个子进程，
+          <strong>daemon 退出前所有子进程已自然退出。</strong>
         </div>
         <div class="tags">
-          <span class="tag risk-high">首次: attach微信提取密钥</span>
-          <span class="tag risk-low">后续: 仅检查Named Pipe</span>
-          <span class="tag defense">无数据查询副作用</span>
+          <span class="tag risk-low">一次性子进程，存活 1-2s</span>
+          <span class="tag defense">全部随 sync 结束而退出</span>
+        </div>
+      </div>
+      <div class="component">
+        <div class="comp-name">生命周期: start → stop</div>
+        <div class="comp-path">safe_wx.py:137 start_daemon() | safe_wx.py:163 stop_daemon()</div>
+        <div class="comp-desc">
+          <strong>sync() 入口:</strong> init_daemon() → ensure_daemon() → start_daemon() 触发 daemon<br>
+          <strong>sync() 出口:</strong> stop_daemon() → wx daemon stop 杀死进程 → _safe_mode_available = False<br>
+          <strong>保证: 任何同步路径 (正常/异常) 离开 sync() 后零 wx-cli 进程存活</strong>
+        </div>
+        <div class="tags">
+          <span class="tag defense">start_daemon → 同步 → stop_daemon</span>
+          <span class="tag defense">缓存随 daemon 退出重置</span>
         </div>
       </div>
     </div>
   </div>
 
-  <div class="flow-arrows">&#x25BC; subprocess.run([WX_CLI] + args) &#x25BC;</div>
+  <div class="flow-arrows"><span class="arrow-icon">&#8595;</span> 一次性子进程: subprocess.run([wx, ...]) → 启动 → daemon 查询 → 退出 <span class="arrow-icon">&#8595;</span></div>
 
-  <!-- ===== LAYER 2: Python Backend ===== -->
+  <!-- ===== LAYER 2 ===== -->
   <div class="layer layer-warn">
     <div class="layer-header">
-      <span>LAYER 2</span> | Python 后端 — 同步编排 &amp; 数据持久化
+      <span class="layer-num">L2</span> Python 后端 — 同步编排 &amp; 数据持久化 &middot; 按 需 触 发
     </div>
     <div class="layer-body">
       <div class="component wide">
@@ -399,37 +511,41 @@
         </div>
         <div class="comp-path">backend/safe_wx.py</div>
         <div class="comp-desc">
-          <strong>_run_wx_raw()</strong> — 无频率限制的 subprocess 封装 (用于 daemon 命令 + export + sessions)<br>
-          <strong>export_and_read_messages()</strong> — "先拷贝再提取": 导出到临时JSON, 读取后删除<br>
-          <strong>safe_export_sessions()</strong> — 获取会话列表<br>
+          <strong>_run_wx_raw()</strong> — 每次调用 spawn 一个 wx 子进程 (subprocess.run)。
+          含频率控制 (WX_MIN_INTERVAL=1.5s) 和每日调用上限 (200次)。<br>
+          <strong>safe_new_messages()</strong> — 单次子进程获取全部会话增量 (LOW RISK)<br>
+          <strong>safe_history()</strong> — 单次子进程拉取指定群消息 (LOW RISK)<br>
+          <strong>safe_export_sessions()</strong> — 单次子进程获取会话列表<br>
+          <em>每次调用 = 一次独立的 wx 子进程生命周期 (启动→执行→退出)</em>
         </div>
         <div class="tags">
-          <span class="tag risk-medium">_run_wx_raw 无限速</span>
-          <span class="tag defense">临时文件中介</span>
+          <span class="tag defense">频率控制 1.5s</span>
+          <span class="tag defense">每日调用上限 200</span>
+          <span class="tag risk-low">每次调用: 一次性子进程</span>
         </div>
         <div class="attack-vector">
           <div class="av-title">攻击面: 任意 Python 代码可 import safe_wx 直接调用 wx-cli</div>
-          <div class="av-desc">python -c "from backend.safe_wx import export_and_read_messages; ..." — Hook 无法拦截</div>
+          <div class="av-desc">python -c "from backend.safe_wx import safe_new_messages; ..." — Hook 无法拦截 Python import</div>
         </div>
       </div>
 
       <div class="component wide">
         <div class="comp-name">
           sync_engine.py
-          <span class="badge badge-warn">同步编排器</span>
+          <span class="badge badge-warn">同步编排器 · 按需触发</span>
         </div>
         <div class="comp-path">backend/sync_engine.py</div>
         <div class="comp-desc">
-          <strong>_run_wx()</strong> — 有限速 (WX_MIN_INTERVAL=1.5s) 的 subprocess 封装<br>
-          <strong>sync()</strong> — 统一入口: 发现新群 → 全量同步新群 → 增量同步已有群 → 文件下载<br>
-          <strong>_human_delay()</strong> — 群间随机延迟 (0.5-2.0s)<br>
-          <strong>_check_safe_mode()</strong> — 守护进程可用性检查 (仅缓存成功状态)<br>
+          <strong>sync()</strong> — 统一入口，<strong>按需执行，非持续运行</strong>:<br>
+          Phase 1 发现新群 → Phase 2 新群全量 (safe_history, 逐群子进程) → Phase 3 增量同步 (safe_new_messages, 1个子进程) → Phase 4 文件下载<br>
+          每阶段产生 1~N 个 wx 子进程。同步完成后返回统计结果，<strong>所有子进程退出，仅 daemon 留存</strong>。<br>
+          <strong>触发方式: POST /api/sync/refresh (Flask 后台线程) 或 start_ledger.bat (独立 Python 进程)</strong>
         </div>
         <div class="tags">
           <span class="tag defense">统一入口 sync()</span>
-          <span class="tag defense">限速: 1.5s间隔</span>
-          <span class="tag defense">随机延迟: 0.5-2s</span>
-          <span class="tag risk-medium">无每日总量上限</span>
+          <span class="tag defense">增量单次调用 (1 子进程)</span>
+          <span class="tag defense">群间延迟 3-8s</span>
+          <span class="tag risk-medium">同步完成后子进程全退</span>
         </div>
       </div>
 
@@ -437,13 +553,11 @@
         <div class="comp-name">config.py</div>
         <div class="comp-path">backend/config.py</div>
         <div class="comp-desc">
-          限速参数 (环境变量可覆盖)<br>
-          微信数据目录自动检测<br>
-          图片 .dat 解密 (含 pymem 内存扫描)
+          限速参数 (环境变量可覆盖)、微信数据目录自动检测、图片 .dat 解密 (含 pymem 内存扫描)
         </div>
         <div class="tags">
           <span class="tag defense">限速配置</span>
-          <span class="tag risk-medium">pymem扫描微信进程</span>
+          <span class="tag risk-medium">pymem 扫描微信进程</span>
         </div>
       </div>
 
@@ -451,22 +565,21 @@
         <div class="comp-name">file_downloader.py</div>
         <div class="comp-path">backend/file_downloader.py</div>
         <div class="comp-desc">
-          纯文件系统操作。从 WeChat 本地文件目录拷贝到 .Download/。<br>
-          <strong>无 wx-cli 调用。</strong>
+          纯文件系统操作。从 WeChat 本地文件目录拷贝到 .Download/。<strong>无 wx-cli 调用。</strong>
         </div>
         <div class="tags">
-          <span class="tag safe">安全: 无wx-cli</span>
+          <span class="tag safe">安全: 无 wx-cli</span>
         </div>
       </div>
     </div>
   </div>
 
-  <div class="flow-arrows">&#x25BC; 数据写入 SQLite &#x25BC;</div>
+  <div class="flow-arrows"><span class="arrow-icon">&#8595;</span> 数据写入 SQLite <span class="arrow-icon">&#8595;</span></div>
 
-  <!-- ===== LAYER 3: Data Layer ===== -->
+  <!-- ===== LAYER 3 ===== -->
   <div class="layer layer-safe">
     <div class="layer-header">
-      <span>LAYER 3</span> | 数据层 — AI 操作的唯一数据来源
+      <span class="layer-num">L3</span> 数据层 — AI 操作的唯一数据来源
     </div>
     <div class="layer-body">
       <div class="component wide">
@@ -476,12 +589,12 @@
         </div>
         <div class="comp-path">data/ledger_v2.db</div>
         <div class="comp-desc">
-          WAL 模式, 外键约束。核心表: groups / messages / contacts / sync_log。<br>
-          messages_fts (FTS5 虚拟表) 全文索引 group_name + sender + content。<br>
+          WAL 模式，外键约束。核心表: groups / messages / contacts / sync_log。
+          messages_fts (FTS5) 全文索引 group_name + sender + content。
           <strong>这是 AI 操作的硬边界 — 所有 AI 数据读取必须来自此数据库。</strong>
         </div>
         <div class="tags">
-          <span class="tag defense">AI数据硬边界</span>
+          <span class="tag defense">AI 数据硬边界</span>
         </div>
         <div class="defense-mech">
           <div class="dm-title">防御: CLAUDE.md 第3条禁令 — "数据唯一起源"</div>
@@ -492,13 +605,8 @@
       <div class="component">
         <div class="comp-name">database.py</div>
         <div class="comp-path">backend/database.py</div>
-        <div class="comp-desc">
-          Schema 定义 + 全部 CRUD 操作。<br>
-          纯 SQLite，无 wx-cli 引用。
-        </div>
-        <div class="tags">
-          <span class="tag safe">纯SQLite</span>
-        </div>
+        <div class="comp-desc">Schema 定义 + 全部 CRUD。纯 SQLite，无 wx-cli 引用。</div>
+        <div class="tags"><span class="tag safe">纯 SQLite</span></div>
       </div>
 
       <div class="component">
@@ -508,19 +616,17 @@
           ai_extractions — 关键信息提取<br>
           由 AI 技能写入，仅供前端展示。
         </div>
-        <div class="tags">
-          <span class="tag safe">只写不读wx</span>
-        </div>
+        <div class="tags"><span class="tag safe">只写不读 wx</span></div>
       </div>
     </div>
   </div>
 
-  <div class="flow-arrows">&#x25BC; Flask REST API (:8888) &#x25BC;</div>
+  <div class="flow-arrows"><span class="arrow-icon">&#8595;</span> Flask REST API (:8888) <span class="arrow-icon">&#8595;</span></div>
 
-  <!-- ===== LAYER 4: Web Layer ===== -->
+  <!-- ===== LAYER 4 ===== -->
   <div class="layer layer-info">
     <div class="layer-header">
-      <span>LAYER 4</span> | Web 层 — 用户界面 &amp; API
+      <span class="layer-num">L4</span> Web 层 — 用户界面 &amp; API
     </div>
     <div class="layer-body">
       <div class="component wide">
@@ -530,12 +636,12 @@
         </div>
         <div class="comp-path">backend/app.py | 127.0.0.1:8888</div>
         <div class="comp-desc">
-          群组列表/详情/消息/搜索/联系人/分类管理/Excel导出。<br>
+          群组列表/详情/消息/搜索/联系人/分类管理/Excel 导出。
           <strong>POST /api/sync/refresh</strong> — 唯一触发 wx-cli 的 API 端点 (后台线程执行 sync())
         </div>
         <div class="tags">
           <span class="tag risk-medium">无认证</span>
-          <span class="tag risk-medium">任何本地进程可触发</span>
+          <span class="tag risk-medium">任何本地进程可触发同步</span>
         </div>
         <div class="attack-vector">
           <div class="av-title">攻击面: HTTP 触发绕过 Hook</div>
@@ -546,35 +652,25 @@
       <div class="component">
         <div class="comp-name">dashboard.html</div>
         <div class="comp-path">templates/dashboard.html</div>
-        <div class="comp-desc">
-          "刷新消息" 按钮触发 POST /api/sync/refresh。<br>
-          无自动同步、无定时器。
-        </div>
-        <div class="tags">
-          <span class="tag defense">仅手动触发</span>
-        </div>
+        <div class="comp-desc">"刷新消息" 按钮触发 POST /api/sync/refresh。无自动同步、无定时器。</div>
+        <div class="tags"><span class="tag defense">仅手动触发</span></div>
       </div>
 
       <div class="component">
         <div class="comp-name">app.js</div>
         <div class="comp-path">static/app.js</div>
-        <div class="comp-desc">
-          刷新按钮 → fetch POST → 每500ms轮询状态 → 完成后刷新视图。<br>
-          注释明确: "自动同步已禁用"
-        </div>
-        <div class="tags">
-          <span class="tag defense">无自动同步</span>
-        </div>
+        <div class="comp-desc">刷新按钮 → fetch POST → 每 500ms 轮询状态 → 完成后刷新视图。自动同步已禁用。</div>
+        <div class="tags"><span class="tag defense">无自动同步</span></div>
       </div>
     </div>
   </div>
 
-  <div class="flow-arrows">&#x25BC; 用户触发 &#x25BC;</div>
+  <div class="flow-arrows"><span class="arrow-icon">&#8595;</span> 用户触发 <span class="arrow-icon">&#8595;</span></div>
 
-  <!-- ===== LAYER 5: AI & External ===== -->
+  <!-- ===== LAYER 5 ===== -->
   <div class="layer layer-def">
     <div class="layer-header">
-      <span>LAYER 5</span> | 防御层 — Hook + CLAUDE.md 禁令体系
+      <span class="layer-num">L5</span> 防御层 — Hook + CLAUDE.md 禁令体系
     </div>
     <div class="layer-body">
       <div class="component wide">
@@ -584,20 +680,17 @@
         </div>
         <div class="comp-path">C:\Users\Kevin\.claude\hooks\block-wx-cli.py</div>
         <div class="comp-desc">
-          拦截 <strong>Bash 工具</strong>调用中的 18 种 wx 相关模式。<br>
+          拦截 <strong>Bash 工具</strong>调用中的 18 种 wx 相关模式。
           豁免: pip install wxpython / pip install python-wx
         </div>
         <div class="tags">
-          <span class="tag defense">Bash层拦截</span>
-          <span class="tag risk-medium">不覆盖MCP Shell</span>
+          <span class="tag defense">Bash 层拦截</span>
+          <span class="tag risk-medium">不覆盖 MCP Shell</span>
         </div>
         <div class="attack-vector">
           <div class="av-title">绕过: MCP Shell 工具不受 Hook 检查</div>
           <div class="av-desc">
-            mcp__shell__start_process<br>
-            mcp__shell__execute_shell_command (serena)<br>
-            mcp__playwright__browser_run_code_unsafe<br>
-            — 这些工具可执行任意命令而不经过 block-wx-cli.py
+            mcp__shell__start_process / mcp__shell__execute_shell_command (serena) / mcp__playwright__browser_run_code_unsafe — 这些工具可执行任意命令而不经过 block-wx-cli.py
           </div>
         </div>
       </div>
@@ -612,7 +705,7 @@
           <strong>2.</strong> AI 绝对禁止: 主会话及子 Agent 均不得调用 wx-cli<br>
           <strong>3.</strong> 数据唯一起源: AI 读取必须来自 SQLite<br>
           <strong>4.</strong> 禁止子 Agent: 本项目不使用 Agent/子 Agent<br>
-          <strong>5.</strong> 自动阻断已部署: PreToolUse hook 硬性阻断<br>
+          <strong>5.</strong> 自动阻断已部署: PreToolUse hook 硬性阻断
         </div>
         <div class="tags">
           <span class="tag defense">行为准则</span>
@@ -623,49 +716,48 @@
       <div class="component">
         <div class="comp-name">start_ledger.bat</div>
         <div class="comp-path">启动脚本</div>
-        <div class="comp-desc">
-          每次启动时调用 sync() 一次。<br>
-          微信未运行时输出提示后跳过。
-        </div>
-        <div class="tags">
-          <span class="tag defense">daemon不可用时跳过</span>
-        </div>
+        <div class="comp-desc">通过 <code>start /B</code> 在后台启动独立 Python 进程执行 sync()，不阻塞 Flask 和浏览器启动。sync 完成后子进程自动退出。</div>
+        <div class="tags"><span class="tag defense">后台启动，不阻塞</span><span class="tag defense">daemon 不可用时跳过</span></div>
       </div>
     </div>
   </div>
 
 </div>
 
-<!-- Sync Call Flow Timeline -->
+<!-- Sync Call Flow -->
 <div class="call-flow">
-  <h3>单次 sync() 完整调用链 &amp; 频率控制点</h3>
+  <h3>单次 sync() 完整调用链 &amp; 进程生命周期 (daemon 随 sync 启停)</h3>
   <div class="call-step">
     <span class="step-time">T+0.0s</span>
-    <span class="step-cmd">_check_safe_mode() → wx daemon status &nbsp;<span class="badge badge-info">无频率限制</span></span>
+    <span class="step-cmd"><span class="badge badge-warn">daemon start</span> init_daemon() → ensure_daemon() → <strong>start_daemon() 触发 daemon 启动</strong> &nbsp;<span class="badge badge-warn">attach 微信提取密钥</span></span>
   </div>
   <div class="call-step">
     <span class="step-time">T+0.5s</span>
-    <span class="step-cmd">_discover_new_groups() → wx sessions -n 200 --json &nbsp;<span class="badge badge-info">无频率限制</span></span>
+    <span class="step-cmd"><span class="badge badge-warn">子进程 spawn</span> _discover_new_groups() → wx sessions -n 200 --json → <span class="badge badge-safe">子进程 exit</span> &nbsp;<span class="badge badge-info">存活 ~1s</span></span>
   </div>
-  <div class="call-step risk">
-    <span class="step-time">T+1.0s</span>
-    <span class="step-cmd">新群全量: wx export &lt;群名&gt; -n 500 &nbsp;<span class="badge badge-warn">限速: _run_wx (1.5s间隔)</span></span>
+  <div class="call-step">
+    <span class="step-time">T+1.5s</span>
+    <span class="step-cmd"><span class="badge badge-warn">子进程 spawn</span> 新群全量: safe_history(群名, limit=500) → <span class="badge badge-safe">子进程 exit</span> &nbsp;<span class="badge badge-info">LOW RISK, 每群 1 子进程, 存活 ~2s</span></span>
   </div>
   <div class="call-step">
     <span class="step-time">T+2.5s</span>
-    <span class="step-cmd">_human_delay(0.5-2.0s) &nbsp;<span class="badge badge-safe">防御: 群间随机延迟</span></span>
-  </div>
-  <div class="call-step risk">
-    <span class="step-time">T+3.5s</span>
-    <span class="step-cmd">已有群增量: wx export &lt;群名&gt; --since &lt;日期&gt; -n 200 &nbsp;<span class="badge badge-warn">限速: _run_wx (1.5s间隔)</span></span>
+    <span class="step-cmd">_human_delay(3-8s) &nbsp;<span class="badge badge-safe">防御: 群间随机延迟 (纯 sleep, 无子进程)</span></span>
   </div>
   <div class="call-step">
-    <span class="step-time">T+N*3s</span>
-    <span class="step-cmd">每群重复: delay + export ... 直到所有需要同步的群完成</span>
+    <span class="step-time">T+N</span>
+    <span class="step-cmd"><span class="badge badge-warn">子进程 spawn</span> 增量同步: safe_new_messages(limit=500) → <span class="badge badge-safe">子进程 exit</span> &nbsp;<span class="badge badge-safe">LOW RISK, 1 子进程覆盖全群, 存活 ~2s</span></span>
   </div>
   <div class="call-step">
-    <span class="step-time">T+结束</span>
+    <span class="step-time">T+N+1s</span>
     <span class="step-cmd">download_new_files() → 纯文件系统拷贝 (无 wx-cli) &nbsp;<span class="badge badge-safe">安全</span></span>
+  </div>
+  <div class="call-step">
+    <span class="step-time">T+N+2s</span>
+    <span class="step-cmd"><span class="badge badge-safe">daemon stop</span> <strong>stop_daemon() → wx daemon stop 杀死 daemon</strong> &nbsp;<span class="badge badge-safe">_safe_mode_available = False</span></span>
+  </div>
+  <div class="call-step">
+    <span class="step-time">T+N+3s</span>
+    <span class="step-cmd"><span class="badge badge-safe">sync() 返回</span> → <strong>零 wx-cli 进程存活</strong>，仅 Flask 留存 &nbsp;<span class="badge badge-safe">封号风险消除</span></span>
   </div>
 </div>
 
@@ -676,6 +768,8 @@
   <div class="legend-item"><span class="tag risk-low">低风险</span> 风险可控</div>
   <div class="legend-item"><span class="tag defense">防御措施</span> 已实施的安全机制</div>
   <div class="legend-item"><span class="tag safe">安全</span> 无 wx-cli 交互</div>
+  <div class="legend-item"><span class="badge badge-warn" style="font-size:0.7rem">子进程 spawn</span> 短暂 wx 子进程启动</div>
+  <div class="legend-item"><span class="badge badge-safe" style="font-size:0.7rem">子进程 exit / 持久</span> 子进程退出 / 持久进程</div>
 </div>
 
 </body>
